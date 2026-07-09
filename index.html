@@ -371,9 +371,9 @@ class RunnerScene extends Phaser.Scene {
     const g = this.courierGfx;
     g.clear();
     const ducking = gameState.isDucking && !gameState.isJumping;
-    const bodyH = ducking ? 22 : 38;
-    const bodyY = ducking ? -14 : -24;
-    const headY = ducking ? -20 : -34;
+    const bodyH = ducking ? 24 : 38;
+    const bodyY = ducking ? 6 : -24;
+    const headY = ducking ? -2 : -34;
 
     const shadowScale = gameState.isJumping ? Phaser.Math.Clamp(1 - Math.abs(gameState.vy)/900, 0.35, 1) : 1;
     g.fillStyle(0x000000, 0.35*shadowScale);
@@ -384,7 +384,7 @@ class RunnerScene extends Phaser.Scene {
     const bob = running ? Math.abs(Math.sin((this._nowMs||0)/60))*2 : 0;
 
     // legs
-    g.fillStyle(0x2b2b2b,1);
+    g.fillStyle(0x0b0b0b,1);
     if(!ducking){
       g.fillRoundedRect(-14, 10+runPhase*3, 10, 26-runPhase*4, 4);
       g.fillRoundedRect(4, 10-runPhase*3, 10, 26+runPhase*4, 4);
@@ -393,8 +393,12 @@ class RunnerScene extends Phaser.Scene {
       g.fillEllipse(-9, 34+runPhase*3, 13, 6);
       g.fillEllipse(9, 34-runPhase*3, 13, 6);
     } else {
-      g.fillRoundedRect(-16, 4, 12, 16, 4);
-      g.fillRoundedRect(6, 4, 12, 16, 4);
+      // crouched, but still planted on the ground — short bent legs reaching the shadow line
+      g.fillRoundedRect(-16, bodyY+bodyH-4, 12, 20, 4);
+      g.fillRoundedRect(5, bodyY+bodyH-4, 12, 20, 4);
+      g.fillStyle(0x0d0d0d,1);
+      g.fillEllipse(-10, bodyY+bodyH+18, 13, 6);
+      g.fillEllipse(11, bodyY+bodyH+18, 13, 6);
     }
 
     // torso
@@ -403,7 +407,7 @@ class RunnerScene extends Phaser.Scene {
 
     // where the box is held: in front of the chest, to the direction of travel
     const holdX = ducking ? 24 : 20;
-    const holdY = (ducking ? -6 : -14) - bob;
+    const holdY = (ducking ? bodyY+2 : -14) - bob;
 
     // arms, angled down from the shoulders to cradle the box underneath
     g.lineStyle(7, BRAND, 1);
@@ -451,7 +455,7 @@ class RunnerScene extends Phaser.Scene {
     const type = groundType ? 'ground' : 'air';
     const sub = groundType ? Phaser.Utils.Array.GetRandom(['pothole','puddle','cone']) : Phaser.Utils.Array.GetRandom(['sign_stop','sign_warn','sign_speed']);
     const x = w + 40;
-    const y = groundType ? this.groundY + 40 : this.groundY - 74;
+    const y = groundType ? this.groundY + 40 : this.groundY - 56;
     const g = this.add.graphics();
     this.obstacles.push({ gfx:g, x, y, type, sub, hit:false, width: groundType?54:64, swingSeed: Math.random()*1000 });
   }
