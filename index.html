@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Venipak — Courier Challenge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
+<style>
+  :root{
+    --brand:#9339f2;
+    --brand-deep:#5b1fa6;
+    --brand-glow:#c79cf5;
+    --brand-ink:#1c1030;
+    --dusk-top:#150c26;
+    --dusk-mid:#3a1f5c;
+    --dusk-horizon:#c96a3e;
+    --asphalt:#2f2a28;
+    --asphalt-wet:#423a37;
+    --mustard:#d9a548;
+    --rust:#c96a3e;
+    --maroon:#7a2e2e;
+    --rain:#cfe0f5;
+    --cream:#f3e9d6;
+    --ink:#140b22;
+    --paper:#faf3e6;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;height:100%;
+    background:var(--ink);
+    font-family:'Inter',sans-serif;
+    display:flex;align-items:center;justify-content:center;
+    overflow:hidden;
+  }
+  #game-wrap{
+    position:relative;
+    width:min(100vw, 720px);
+    aspect-ratio: 16/9;
+    max-height:100vh;
+    box-shadow:0 24px 70px rgba(0,0,0,0.65), 0 0 0 1px rgba(147,57,242,0.15);
+    border-radius:16px;
+    overflow:hidden;
+  }
+  #game-wrap canvas{ display:block; width:100% !important; height:100% !important; }
+  .display{font-family:'Space Grotesk',sans-serif;}
+  .overlay{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center;
+    background:
+      radial-gradient(120% 100% at 50% 0%, rgba(147,57,242,0.28), transparent 55%),
+      linear-gradient(180deg, rgba(21,12,38,0.94), rgba(20,11,34,0.97));
+    color:var(--paper);
+    padding:18px 24px;
+    z-index:10;
+    overflow-y:auto;
+  }
+  .overlay.hidden{display:none;}
+  .brand-lockup{ display:flex; align-items:center; gap:10px; margin-bottom:10px; opacity:0.95; flex-shrink:0; }
+  .brand-lockup svg{ height:18px; width:auto; }
+  .brand-lockup .pipe{ width:1px; height:14px; background:rgba(243,233,214,0.25); }
+  .brand-lockup .tag{ font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#b9a9d6; }
+  .overlay h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;
+    font-size:26px; letter-spacing:-0.01em; margin:0 0 5px;
+    color:var(--paper);
+  }
+  .overlay h1 .accent{ color:var(--brand-glow); }
+  .overlay p{margin:2px 0 10px; font-size:13px; line-height:1.45; color:#d9cce9; max-width:360px;}
+  .btn{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;
+    font-size:15px; letter-spacing:0.01em;
+    background:linear-gradient(180deg, var(--brand), var(--brand-deep));
+    color:#fff;
+    border:none;
+    padding:11px 28px;
+    border-radius:10px;
+    cursor:pointer;
+    box-shadow:0 4px 0 #431780, 0 8px 24px rgba(147,57,242,0.35);
+    transition:transform 0.08s ease;
+    touch-action:manipulation;
+    -webkit-tap-highlight-color:transparent;
+    -webkit-user-select:none;
+    user-select:none;
+  }
+  .btn:active{transform:translateY(3px); box-shadow:0 1px 0 #431780, 0 4px 12px rgba(147,57,242,0.3);}
+  .btn.secondary{
+    background:transparent; color:var(--paper); box-shadow:none;
+    border:1.5px solid rgba(243,233,214,0.25);
+    font-size:12.5px; padding:8px 18px;
+  }
+  .btn-stack{ display:flex; flex-direction:column; align-items:center; gap:8px; margin-top:6px; flex-shrink:0; }
+  .stat-row{display:flex; gap:26px; margin-bottom:8px; flex-shrink:0;}
+  .stat{text-align:center;}
+  .stat .num{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:26px; color:var(--paper);}
+  .stat .lbl{font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:#b9a9d6;}
+  .coupon{
+    margin-top:2px; border:1.5px dashed var(--brand-glow); border-radius:12px;
+    padding:10px 22px; background:rgba(147,57,242,0.1);
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    position:relative; flex-shrink:0;
+  }
+  .coupon::before, .coupon::after{
+    content:''; position:absolute; width:14px; height:14px; border-radius:50%;
+    background:var(--ink); top:50%; transform:translateY(-50%);
+  }
+  .coupon::before{ left:-7px; } .coupon::after{ right:-7px; }
+  .coupon .code{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:24px; letter-spacing:0.06em; color:var(--paper); }
+  .coupon .sub{font-size:10px; color:#c8b8e0; text-transform:uppercase; letter-spacing:0.06em;}
+  .copy-note{font-size:10.5px; color:#9a8bb8; margin-top:2px; height:12px;}
+  #hint{ position:absolute; bottom:8px; left:0; right:0; text-align:center; color:rgba(243,233,214,0.4); font-size:10.5px; letter-spacing:0.03em; z-index:5; pointer-events:none; }
+  #watermark{ position:absolute; bottom:10px; right:14px; z-index:6; opacity:0.55; pointer-events:none; }
+  #watermark svg{ height:13px; width:auto; display:block; }
+</style>
+</head>
+<body>
+<div id="game-wrap">
+  <div id="phaser-container"></div>
+  <div id="start-overlay" class="overlay">
+    <div class="brand-lockup">
+      <svg width="99" height="19" viewBox="0 0 148 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M70.3361 14.1505V22.8649H63.3837V15.1593C63.3837 12.736 62.5343 11.6327 60.6143 11.6327C58.6311 11.6327 57.5932 12.8627 57.5932 15.2519V22.8652H50.6739V7.13498H55.615L57.4062 10.3442C58.6311 7.92087 60.8028 6.66217 63.7607 6.66217C68.0721 6.66217 70.3361 9.24347 70.3361 14.1505Z" fill="#F3E9D6"/>
+        <path d="M73.1616 0.105644H80.2719V5.1834H73.1616V0.105644ZM73.2567 7.13393H80.1789V22.8663H73.2567V7.13393Z" fill="#F3E9D6"/>
+        <path d="M96.1898 6.66287C93.6391 6.66287 91.4422 7.60708 90.1199 9.49051V9.50187L90.116 9.49442L88.7977 7.13568H83.3849V27.9433H90.3042V20.948C91.7517 22.522 93.5123 23.3369 95.9683 23.3369C100.687 23.3369 103.866 20.0365 103.866 14.8739C103.867 9.93812 100.813 6.66287 96.1898 6.66287ZM93.4836 18.995C91.4674 18.995 90.1792 17.5187 90.1792 15.2509V14.6858C90.1792 12.2638 91.4042 10.9721 93.4506 10.9721C95.5285 10.9721 96.6928 12.3892 96.6928 14.8743C96.6932 17.4225 95.4959 18.995 93.4836 18.995Z" fill="#F3E9D6"/>
+        <path d="M115.063 6.65542C109.519 6.65542 105.779 8.80047 105.343 12.5105H112.381C112.537 11.2856 113.456 10.6207 115.021 10.6207C116.472 10.6207 117.362 11.1997 117.362 12.4257V13.016L111.79 13.5559C109.235 13.8367 107.6 14.3017 106.529 15.0918C105.43 15.882 104.894 17.0118 104.894 18.4935C104.894 21.483 107.319 23.3298 111.352 23.3298C114.36 23.3298 116.805 22.2149 117.662 20.4351V20.4199L117.666 20.4273C117.67 20.4234 117.67 20.4159 117.673 20.412V20.4422L119.025 22.8641H124.345V13.5268C124.344 8.87004 121.538 6.65542 115.063 6.65542ZM117.517 16.9274C117.517 18.4381 116.162 19.4643 114.146 19.4643C112.791 19.4643 111.946 18.8726 111.946 17.9284C111.946 17.0118 112.736 16.4773 114.498 16.2221L117.517 15.882V16.9274Z" fill="#F3E9D6"/>
+        <path d="M136.349 16.7371L133.854 18.9961V22.8666H126.933V0.0566559H133.854V12.6415L139.172 7.13393H147.478L141.729 12.6263L147.605 22.8666H139.958L136.349 16.7371Z" fill="#F3E9D6"/>
+        <path d="M26.8029 0.10601V22.8667H13.8045L0.649536 0.10601H8.44738L19.7672 19.8164V0.10601H26.8029Z" fill="#F3E9D6"/>
+        <path d="M48.701 15.1178C48.701 9.85684 45.4006 6.6146 39.4152 6.43605C39.242 6.42966 39.0613 6.42718 38.8806 6.42718C38.3294 6.42718 37.7795 6.45628 37.2741 6.52586C32.1381 7.04659 28.9072 10.1674 28.9072 14.8345C28.9072 20.0248 33.7006 23.1002 39.2345 23.1002C41.6401 23.1002 43.9179 22.812 46.5308 20.8085C46.7722 20.6254 47.0189 20.4245 47.2666 20.2079L44.8082 16.1894C44.6349 16.3903 44.4415 16.6029 44.2242 16.8187C43.2864 17.7441 41.9109 18.6859 39.8695 18.6859C37.6688 18.6859 35.7083 17.37 35.4542 15.8039H48.7014V15.1178H48.701ZM35.4534 12.4999C35.6089 10.806 36.7796 10.0805 38.7841 10.0805C40.7736 10.0805 41.9709 11.0197 41.9709 12.4999H35.4534Z" fill="#F3E9D6"/>
+      </svg>
+      <div class="pipe"></div>
+      <div class="tag">Courier Challenge</div>
+    </div>
+    <h1>Keep it <span class="accent">FRAGILE</span>-safe</h1>
+    <p>Autumn's rough on deliveries. Jump the potholes and puddles, duck the wind-blown branches, and get the box through the storm in one piece.</p>
+    <button class="btn" id="start-btn">START DELIVERY</button>
+    <div style="margin-top:10px; font-size:11px; color:#9a8bb8;">SPACE / &uarr; to jump &middot; &darr; to duck &middot; tap top/bottom on mobile</div>
+  </div>
+  <div id="gameover-overlay" class="overlay hidden">
+    <h1 style="color:#e07a7a">Package damaged</h1>
+    <p>The box didn't make it this time. Give it another go.</p>
+    <div class="stat-row"><div class="stat"><div class="num" id="go-distance">0m</div><div class="lbl">Distance</div></div></div>
+    <div class="btn-stack">
+      <button class="btn" id="retry-btn">TRY AGAIN</button>
+      <button class="btn secondary" id="home-btn-go">BACK TO HOME</button>
+    </div>
+  </div>
+  <div id="win-overlay" class="overlay hidden">
+    <h1>Delivered <span class="accent">safely</span></h1>
+    <p>Nice hands. The package arrived intact — here's something for the road.</p>
+    <div class="stat-row">
+      <div class="stat"><div class="num" id="win-distance">0m</div><div class="lbl">Distance</div></div>
+      <div class="stat"><div class="num" id="win-condition">100%</div><div class="lbl">Condition</div></div>
+    </div>
+    <div class="coupon">
+      <div class="sub">Your reward</div>
+      <div class="code" id="coupon-code">FAST15</div>
+      <div class="sub">-15% off shipping</div>
+    </div>
+    <div class="copy-note" id="copy-note"></div>
+    <div class="btn-stack">
+      <button class="btn" id="copy-btn">COPY CODE</button>
+      <button class="btn secondary" id="play-again-btn">PLAY AGAIN</button>
+      <button class="btn secondary" id="home-btn-win">BACK TO HOME</button>
+    </div>
+  </div>
+  <div id="hint"></div>
+  <div id="watermark">
+    <svg width="99" height="19" viewBox="0 0 148 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M70.3361 14.1505V22.8649H63.3837V15.1593C63.3837 12.736 62.5343 11.6327 60.6143 11.6327C58.6311 11.6327 57.5932 12.8627 57.5932 15.2519V22.8652H50.6739V7.13498H55.615L57.4062 10.3442C58.6311 7.92087 60.8028 6.66217 63.7607 6.66217C68.0721 6.66217 70.3361 9.24347 70.3361 14.1505Z" fill="#F3E9D6"/>
+      <path d="M73.1616 0.105644H80.2719V5.1834H73.1616V0.105644ZM73.2567 7.13393H80.1789V22.8663H73.2567V7.13393Z" fill="#F3E9D6"/>
+      <path d="M96.1898 6.66287C93.6391 6.66287 91.4422 7.60708 90.1199 9.49051V9.50187L90.116 9.49442L88.7977 7.13568H83.3849V27.9433H90.3042V20.948C91.7517 22.522 93.5123 23.3369 95.9683 23.3369C100.687 23.3369 103.866 20.0365 103.866 14.8739C103.867 9.93812 100.813 6.66287 96.1898 6.66287ZM93.4836 18.995C91.4674 18.995 90.1792 17.5187 90.1792 15.2509V14.6858C90.1792 12.2638 91.4042 10.9721 93.4506 10.9721C95.5285 10.9721 96.6928 12.3892 96.6928 14.8743C96.6932 17.4225 95.4959 18.995 93.4836 18.995Z" fill="#F3E9D6"/>
+      <path d="M115.063 6.65542C109.519 6.65542 105.779 8.80047 105.343 12.5105H112.381C112.537 11.2856 113.456 10.6207 115.021 10.6207C116.472 10.6207 117.362 11.1997 117.362 12.4257V13.016L111.79 13.5559C109.235 13.8367 107.6 14.3017 106.529 15.0918C105.43 15.882 104.894 17.0118 104.894 18.4935C104.894 21.483 107.319 23.3298 111.352 23.3298C114.36 23.3298 116.805 22.2149 117.662 20.4351V20.4199L117.666 20.4273C117.67 20.4234 117.67 20.4159 117.673 20.412V20.4422L119.025 22.8641H124.345V13.5268C124.344 8.87004 121.538 6.65542 115.063 6.65542ZM117.517 16.9274C117.517 18.4381 116.162 19.4643 114.146 19.4643C112.791 19.4643 111.946 18.8726 111.946 17.9284C111.946 17.0118 112.736 16.4773 114.498 16.2221L117.517 15.882V16.9274Z" fill="#F3E9D6"/>
+      <path d="M136.349 16.7371L133.854 18.9961V22.8666H126.933V0.0566559H133.854V12.6415L139.172 7.13393H147.478L141.729 12.6263L147.605 22.8666H139.958L136.349 16.7371Z" fill="#F3E9D6"/>
+      <path d="M26.8029 0.10601V22.8667H13.8045L0.649536 0.10601H8.44738L19.7672 19.8164V0.10601H26.8029Z" fill="#F3E9D6"/>
+      <path d="M48.701 15.1178C48.701 9.85684 45.4006 6.6146 39.4152 6.43605C39.242 6.42966 39.0613 6.42718 38.8806 6.42718C38.3294 6.42718 37.7795 6.45628 37.2741 6.52586C32.1381 7.04659 28.9072 10.1674 28.9072 14.8345C28.9072 20.0248 33.7006 23.1002 39.2345 23.1002C41.6401 23.1002 43.9179 22.812 46.5308 20.8085C46.7722 20.6254 47.0189 20.4245 47.2666 20.2079L44.8082 16.1894C44.6349 16.3903 44.4415 16.6029 44.2242 16.8187C43.2864 17.7441 41.9109 18.6859 39.8695 18.6859C37.6688 18.6859 35.7083 17.37 35.4542 15.8039H48.7014V15.1178H48.701ZM35.4534 12.4999C35.6089 10.806 36.7796 10.0805 38.7841 10.0805C40.7736 10.0805 41.9709 11.0197 41.9709 12.4999H35.4534Z" fill="#F3E9D6"/>
+    </svg>
+  </div>
+</div>
+<script>
+const BRAND = 0x9339f2;
+const BRAND_GLOW = 0xc79cf5;
+const BRAND_DEEP = 0x5b1fa6;
+
+const LEVEL_DISTANCE = 1400;
+const DURABILITY_MAX = 100;
+const GROUND_Y_RATIO = 0.74;
+const DAMAGE = { ground: 30, air: 26 };
+const GRAVITY = 1600;
+const JUMP_VELOCITY = -620;
+
+let gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:0, isJumping:false, isDucking:false };
+
+class RunnerScene extends Phaser.Scene {
+  constructor(){ super('runner'); }
+
+  create(){
+    const w = this.scale.width, h = this.scale.height;
+    this.groundY = h*GROUND_Y_RATIO;
+    gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:this.groundY, isJumping:false, isDucking:false };
+
+    this.bgGfx = this.add.graphics();
+    this.drawSky();
+
+    this.skylineGfx = this.add.graphics();
+    this.buildSkyline();
+    this.skylineOffset = 0;
+
+    this.groundGfx = this.add.graphics();
+    this.groundOffset = 0;
+
+    this.leaves = [];
+    for(let i=0;i<18;i++){
+      this.leaves.push({
+        x: Phaser.Math.Between(0,w), y: Phaser.Math.Between(0,h*0.65),
+        r: Phaser.Math.Between(3,6), speed: Phaser.Math.Between(50,120),
+        drift: Phaser.Math.Between(-70,-20), spin: Phaser.Math.FloatBetween(0.5,2),
+        color: Phaser.Utils.Array.GetRandom([0xd9a548,0xc96a3e,0x8a3b2b,0xb5822f])
+      });
+    }
+    this.weatherGfx = this.add.graphics();
+
+    this.rain = [];
+    for(let i=0;i<70;i++){
+      this.rain.push({
+        x: Phaser.Math.Between(0,w), y: Phaser.Math.Between(0,h),
+        len: Phaser.Math.Between(14,26), speed: Phaser.Math.Between(560,900)
+      });
+    }
+    this.rainGfx = this.add.graphics();
+
+    this.nextFlash = Phaser.Math.Between(3500,7000);
+    this.flashTimer = 0;
+
+    this.playerX = w*0.22;
+    this.playerContainer = this.add.container(this.playerX, this.groundY);
+    this.buildCourier();
+
+    this.obstacles = [];
+    this.spawnTimer = 0;
+    this.spawnInterval = 1000;
+
+    this.hudBg = this.add.graphics();
+    this.hudBg.fillStyle(0x140b22, 0.6);
+    this.hudBg.fillRoundedRect(12,12,w-24,50,10);
+    this.hudBg.lineStyle(1,0x9339f2,0.3);
+    this.hudBg.strokeRoundedRect(12,12,w-24,50,10);
+
+    this.hudLogo = this.add.graphics();
+    this.hudLogo.fillStyle(BRAND,1);
+    this.hudLogo.fillRoundedRect(22,24,26,26,6);
+    this.hudLogoText = this.add.text(35,37,'V',{fontFamily:'Space Grotesk',fontSize:'16px',fontStyle:'700',color:'#ffffff'}).setOrigin(0.5);
+
+    this.distText = this.add.text(58,18,'0 m',{ fontFamily:'Space Grotesk', fontSize:'22px', fontStyle:'700', color:'#f3e9d6' });
+    this.distLabel = this.add.text(58,42,'DISTANCE',{ fontFamily:'Inter', fontSize:'9px', color:'#b9a9d6', letterSpacing:1 });
+
+    this.barX = w*0.5; this.barY = 26; this.barW = w*0.36; this.barH = 14;
+    this.durLabel = this.add.text(this.barX, this.barY-13, 'PACKAGE CONDITION',{ fontFamily:'Inter', fontSize:'9px', color:'#b9a9d6', letterSpacing:1 });
+    this.barBg = this.add.graphics();
+    this.barFill = this.add.graphics();
+
+    this.input.keyboard.on('keydown-SPACE', ()=>this.tryJump());
+    this.input.keyboard.on('keydown-UP', ()=>this.tryJump());
+    this.input.keyboard.on('keydown-DOWN', ()=>this.startDuck());
+    this.input.keyboard.on('keyup-DOWN', ()=>this.endDuck());
+
+    this.input.on('pointerdown', (p)=>{
+      if(p.y > this.scale.height*0.55) this.startDuck();
+      else this.tryJump();
+    });
+    this.input.on('pointerup', ()=>this.endDuck());
+  }
+
+  drawSky(){
+    const w=this.scale.width,h=this.scale.height;
+    this.bgGfx.clear();
+    const c1 = Phaser.Display.Color.ValueToColor(0x150c26);
+    const c2 = Phaser.Display.Color.ValueToColor(0x3a1f5c);
+    const c3 = Phaser.Display.Color.ValueToColor(0xc96a3e);
+    const steps = 44;
+    for(let i=0;i<steps;i++){
+      const t = i/steps;
+      let c;
+      if(t < 0.55){
+        c = Phaser.Display.Color.Interpolate.ColorWithColor(c1, c2, 1, t/0.55);
+      } else {
+        c = Phaser.Display.Color.Interpolate.ColorWithColor(c2, c3, 1, (t-0.55)/0.45);
+      }
+      this.bgGfx.fillStyle(Phaser.Display.Color.GetColor(c.r,c.g,c.b),1);
+      this.bgGfx.fillRect(0, h*0.62*t, w, h*0.62/steps + 1);
+    }
+    this.bgGfx.fillStyle(0x2f2a28,1);
+    this.bgGfx.fillRect(0,h*0.62,w,h*0.38);
+  }
+
+  buildSkyline(){
+    const w=this.scale.width, h=this.scale.height;
+    this.buildings = [];
+    let x = -40;
+    while(x < w+400){
+      const bw = Phaser.Math.Between(50,110);
+      const bh = Phaser.Math.Between(60,160);
+      this.buildings.push({x, w:bw, h:bh, windows: Phaser.Math.Between(2,5)});
+      x += bw + Phaser.Math.Between(6,18);
+    }
+  }
+
+  drawSkyline(){
+    const w=this.scale.width, h=this.scale.height;
+    const baseY = h*0.62;
+    this.skylineGfx.clear();
+    this.buildings.forEach(b=>{
+      const bx = b.x - this.skylineOffset;
+      if(bx < -150 || bx > w+150) return;
+      this.skylineGfx.fillStyle(0x241a30, 0.9);
+      this.skylineGfx.fillRect(bx, baseY-b.h, b.w, b.h);
+      this.skylineGfx.fillStyle(0xd9a548, 0.5);
+      for(let i=0;i<b.windows;i++){
+        const wx = bx+8+ (i%2)*(b.w/2-4);
+        const wy = baseY-b.h+14+Math.floor(i/2)*22;
+        if(wy < baseY-6) this.skylineGfx.fillRect(wx, wy, 6, 8);
+      }
+    });
+  }
+
+  buildCourier(){
+    this.courierGfx = this.add.graphics();
+    this.playerContainer.add(this.courierGfx);
+
+    const box = this.add.container(0,0);
+    const bg = this.add.graphics();
+    // cardboard body
+    bg.fillStyle(0xc9a06e,1);
+    bg.fillRoundedRect(-17,-15,34,30,3);
+    bg.lineStyle(2,0x8a6a3f,1);
+    bg.strokeRoundedRect(-17,-15,34,30,3);
+    // subtle box-flap shading on the edges
+    bg.fillStyle(0x8a6a3f,0.25);
+    bg.fillRect(-17,-15,34,4);
+    bg.fillRect(-17,11,34,4);
+    // kraft sealing tape, vertical
+    bg.fillStyle(0xe8ddc4,0.85);
+    bg.fillRect(-5,-15,10,30);
+    // branded purple tape band, horizontal
+    bg.fillStyle(0x9339f2,0.95);
+    bg.fillRect(-19,-4,38,8);
+    bg.lineStyle(1,0x5b1fa6,0.8);
+    bg.lineBetween(-19,-4,19,-4);
+    bg.lineBetween(-19,4,19,4);
+    box.add(bg);
+    // logo badge (brand mark) on the face, off the tape
+    const badge = this.add.graphics();
+    badge.fillStyle(0xf3e9d6,1);
+    badge.fillRoundedRect(-8,-12,16,10,2);
+    box.add(badge);
+    const badgeMark = this.add.text(0,-7,'V',{ fontFamily:'Space Grotesk', fontSize:'9px', fontStyle:'700', color:'#5b1fa6' }).setOrigin(0.5);
+    box.add(badgeMark);
+    this.boxRef = box;
+
+    this.boxGlow = this.add.graphics();
+    box.addAt(this.boxGlow, 0);
+
+    this.playerContainer.add(box);
+    this.redrawCourier();
+  }
+
+  redrawCourier(){
+    const g = this.courierGfx;
+    g.clear();
+    const ducking = gameState.isDucking && !gameState.isJumping;
+    const bodyH = ducking ? 22 : 38;
+    const bodyY = ducking ? -14 : -24;
+    const headY = ducking ? -20 : -34;
+
+    const shadowScale = gameState.isJumping ? Phaser.Math.Clamp(1 - Math.abs(gameState.vy)/900, 0.35, 1) : 1;
+    g.fillStyle(0x000000, 0.35*shadowScale);
+    g.fillEllipse(0, this.groundY - this.playerContainer.y + 44, 44*shadowScale, 11*shadowScale);
+
+    const runPhase = Math.sin((this._nowMs||0)/60);
+    const running = !ducking && !gameState.isJumping;
+    const bob = running ? Math.abs(Math.sin((this._nowMs||0)/60))*2 : 0;
+
+    // legs
+    g.fillStyle(0x2b2b2b,1);
+    if(!ducking){
+      g.fillRoundedRect(-14, 10+runPhase*3, 10, 26-runPhase*4, 4);
+      g.fillRoundedRect(4, 10-runPhase*3, 10, 26+runPhase*4, 4);
+      // feet
+      g.fillStyle(0x0d0d0d,1);
+      g.fillEllipse(-9, 34+runPhase*3, 13, 6);
+      g.fillEllipse(9, 34-runPhase*3, 13, 6);
+    } else {
+      g.fillRoundedRect(-16, 4, 12, 16, 4);
+      g.fillRoundedRect(6, 4, 12, 16, 4);
+    }
+
+    // torso
+    g.fillStyle(BRAND,1);
+    g.fillRoundedRect(-18, bodyY-bob, 36, bodyH, 8);
+
+    // where the box is held: in front of the chest, to the direction of travel
+    const holdX = ducking ? 24 : 20;
+    const holdY = (ducking ? -6 : -14) - bob;
+
+    // arms, angled down from the shoulders to cradle the box underneath
+    g.lineStyle(7, BRAND, 1);
+    g.lineBetween(-13, bodyY+8-bob, holdX-13, holdY+9);
+    g.lineBetween(13, bodyY+8-bob, holdX+13, holdY+9);
+    g.fillStyle(0xe7b98c,1);
+    g.fillCircle(holdX-13, holdY+9, 4);
+    g.fillCircle(holdX+13, holdY+9, 4);
+
+    // head
+    g.fillStyle(0xe7b98c,1);
+    g.fillCircle(0, headY-bob, 12);
+
+    // black baseball cap with forward brim + small brand button
+    g.fillStyle(0x0d0d0d,1);
+    g.fillEllipse(-1, headY-8-bob, 25, 15);
+    g.fillEllipse(9, headY-3-bob, 15, 6);
+    g.fillStyle(BRAND,1);
+    g.fillCircle(-1, headY-14-bob, 2.2);
+
+    this.boxRef.setPosition(holdX, holdY);
+
+    this.boxGlow.clear();
+    this.boxGlow.fillStyle(BRAND_GLOW, 0.18);
+    this.boxGlow.fillCircle(0,0,26);
+  }
+
+  tryJump(){
+    if(!gameState.running) return;
+    if(gameState.isJumping) return;
+    if(gameState.isDucking) this.endDuck();
+    gameState.isJumping = true;
+    gameState.vy = JUMP_VELOCITY;
+  }
+  startDuck(){
+    if(!gameState.running) return;
+    if(gameState.isJumping) return;
+    gameState.isDucking = true;
+  }
+  endDuck(){ gameState.isDucking = false; }
+
+  spawnObstacle(){
+    const w=this.scale.width;
+    const groundType = Math.random() < 0.55;
+    const type = groundType ? 'ground' : 'air';
+    const sub = groundType ? Phaser.Utils.Array.GetRandom(['pothole','puddle','cone']) : Phaser.Utils.Array.GetRandom(['sign_stop','sign_warn','sign_speed']);
+    const x = w + 40;
+    const y = groundType ? this.groundY + 40 : this.groundY - 74;
+    const g = this.add.graphics();
+    this.obstacles.push({ gfx:g, x, y, type, sub, hit:false, width: groundType?54:64, swingSeed: Math.random()*1000 });
+  }
+
+  redrawObstacle(o, time){
+    const g = o.gfx;
+    g.clear();
+    if(o.sub==='pothole'){
+      g.fillStyle(0x140b22,1);
+      g.fillEllipse(o.x,o.y+6,54,22);
+      g.fillStyle(0x3a3330,1);
+      g.fillEllipse(o.x,o.y+3,40,14);
+    } else if(o.sub==='puddle'){
+      g.fillStyle(0x4a5568,0.6);
+      g.fillEllipse(o.x,o.y+6,58,18);
+      g.lineStyle(2,BRAND_GLOW,0.55);
+      g.strokeEllipse(o.x,o.y+6,58,18);
+    } else if(o.sub==='cone'){
+      g.fillStyle(0x000000,0.25);
+      g.fillEllipse(o.x,o.y+11,34,9);
+      g.fillStyle(0xc96a3e,1);
+      g.fillTriangle(o.x-16,o.y+10, o.x+16,o.y+10, o.x,o.y-20);
+      g.fillStyle(0xf3e9d6,1);
+      g.fillTriangle(o.x-11,o.y+2, o.x+11,o.y+2, o.x+4,o.y-8);
+      g.fillTriangle(o.x-4,o.y-8, o.x-11,o.y+2, o.x+4,o.y-8);
+      g.fillStyle(0x1c1712,1);
+      g.fillRoundedRect(o.x-19,o.y+7,38,7,2);
+    } else {
+      // road sign hanging from an overhead bar, swaying gently in the wind
+      const sway = Math.sin((time||0)/300 + o.swingSeed) * 5;
+      g.fillStyle(0x3a3330,1);
+      g.fillRect(o.x-32, o.y-30, 64, 6);
+      g.fillStyle(0x1c1712,1);
+      g.fillRect(o.x-3, o.y-30, 6, 22);
+
+      const sx = o.x + sway, sy = o.y-2;
+      if(o.sub==='sign_stop'){
+        g.fillStyle(0x7a2e2e,1);
+        g.fillRoundedRect(sx-16, sy-16, 32, 32, 8);
+        g.lineStyle(2,0xf3e9d6,0.9);
+        g.strokeRoundedRect(sx-16, sy-16, 32, 32, 8);
+        g.fillStyle(0xf3e9d6,1);
+        g.fillRect(sx-10, sy-3, 20, 6);
+      } else if(o.sub==='sign_warn'){
+        g.fillStyle(0xd9a548,1);
+        g.fillTriangle(sx, sy-18, sx-18, sy+14, sx+18, sy+14);
+        g.lineStyle(2,0x1c1712,0.8);
+        g.strokeTriangle(sx, sy-18, sx-18, sy+14, sx+18, sy+14);
+        g.fillStyle(0x1c1712,1);
+        g.fillRect(sx-2, sy-8, 4, 12);
+        g.fillCircle(sx, sy+9, 2.2);
+      } else {
+        g.fillStyle(0xf3e9d6,1);
+        g.fillCircle(sx, sy, 17);
+        g.lineStyle(4,0x7a2e2e,1);
+        g.strokeCircle(sx, sy, 17);
+        g.fillStyle(0x1c1712,1);
+        g.fillRect(sx-2, sy-10, 4, 20);
+      }
+    }
+  }
+
+  update(time, delta){
+    if(!gameState.running) return;
+    const dt = delta/1000;
+    const w=this.scale.width, h=this.scale.height;
+    this._nowMs = time;
+
+    gameState.distance += gameState.speed*dt*0.5;
+    gameState.speed = Math.min(560, 340 + gameState.distance*0.09);
+    this.distText.setText(Math.floor(gameState.distance)+' m');
+
+    this.skylineOffset = (this.skylineOffset + gameState.speed*dt*0.12);
+    const totalW = this.buildings.reduce((a,b)=>Math.max(a,b.x+b.w),0);
+    if(this.skylineOffset > totalW) this.skylineOffset -= totalW;
+    this.drawSkyline();
+
+    this.groundOffset = (this.groundOffset + gameState.speed*dt) % 44;
+    this.groundGfx.clear();
+    // subtle depth shading: slightly lighter near the horizon line, darker toward the foreground
+    const roadTop = this.groundY+46, roadH = h-roadTop;
+    const rc1 = Phaser.Display.Color.ValueToColor(0x2a221c);
+    const rc2 = Phaser.Display.Color.ValueToColor(0x140b12);
+    const bands = 10;
+    for(let i=0;i<bands;i++){
+      const t = i/bands;
+      const c = Phaser.Display.Color.Interpolate.ColorWithColor(rc1, rc2, 1, t);
+      this.groundGfx.fillStyle(Phaser.Display.Color.GetColor(c.r,c.g,c.b),1);
+      this.groundGfx.fillRect(0, roadTop + roadH*t, w, roadH/bands + 1);
+    }
+    this.groundGfx.lineStyle(3,BRAND,0.4);
+    for(let x=-44+this.groundOffset; x<w; x+=44){
+      this.groundGfx.lineBetween(x, this.groundY+46, x+20, this.groundY+46);
+    }
+    this.groundGfx.lineStyle(3,0x5a3d2b,0.8);
+    this.groundGfx.lineBetween(0,this.groundY+46,w,this.groundY+46);
+    this.groundGfx.fillStyle(0xffffff,0.03);
+    this.groundGfx.fillRect(0,this.groundY+46,w,6);
+
+    this.weatherGfx.clear();
+    this.leaves.forEach(lf=>{
+      lf.x += lf.drift*dt*6;
+      lf.y += Math.sin(time/500+lf.x)*0.3 + 18*dt;
+      if(lf.x < -10 || lf.y > h){ lf.x = w+10; lf.y = Phaser.Math.Between(0,h*0.5); }
+      this.weatherGfx.fillStyle(lf.color,0.85);
+      this.weatherGfx.fillCircle(lf.x,lf.y,lf.r);
+    });
+
+    this.rainGfx.clear();
+    this.rainGfx.lineStyle(2, 0xcfe0f5, 0.35);
+    this.rain.forEach(r=>{
+      r.x -= 90*dt;
+      r.y += r.speed*dt;
+      if(r.y > h){ r.y = -20; r.x = Phaser.Math.Between(0,w); }
+      this.rainGfx.lineBetween(r.x, r.y, r.x-8, r.y+r.len);
+    });
+
+    this.flashTimer += delta;
+    if(this.flashTimer > this.nextFlash){
+      this.flashTimer = 0;
+      this.nextFlash = Phaser.Math.Between(4500,9000);
+      this.cameras.main.flash(180, 199, 156, 245, false);
+    }
+
+    if(gameState.isJumping){
+      gameState.vy += GRAVITY*dt;
+      this.playerContainer.y += gameState.vy*dt;
+      if(this.playerContainer.y >= this.groundY){
+        this.playerContainer.y = this.groundY;
+        gameState.isJumping = false;
+        gameState.vy = 0;
+      }
+    }
+    this.redrawCourier();
+
+    this.spawnTimer += delta;
+    const interval = Math.max(480, this.spawnInterval - gameState.distance*0.35);
+    if(this.spawnTimer > interval){
+      this.spawnTimer = 0;
+      this.spawnObstacle();
+    }
+
+    for(let i=this.obstacles.length-1;i>=0;i--){
+      const o = this.obstacles[i];
+      o.x -= gameState.speed*dt;
+      this.redrawObstacle(o, time);
+
+      const dx = Math.abs(o.x - this.playerX);
+      if(!o.hit && dx < o.width*0.42){
+        let collided = false;
+        if(o.type==='ground'){
+          const clearance = this.groundY - this.playerContainer.y;
+          if(clearance < 46) collided = true;
+        } else {
+          const ducking = gameState.isDucking && !gameState.isJumping;
+          if(!ducking) collided = true;
+        }
+        if(collided){
+          o.hit = true;
+          this.applyDamage(o.type);
+        } else {
+          o.hit = true;
+        }
+      }
+
+      if(o.x < -60){
+        o.gfx.destroy();
+        this.obstacles.splice(i,1);
+      }
+    }
+
+    this.barBg.clear();
+    this.barBg.fillStyle(0x140b22,0.6);
+    this.barBg.fillRoundedRect(this.barX-this.barW/2,this.barY,this.barW,this.barH,8);
+    this.barFill.clear();
+    const pct = gameState.durability/DURABILITY_MAX;
+    const col = pct>0.5 ? BRAND : (pct>0.25 ? 0xd9a548 : 0x7a2e2e);
+    this.barFill.fillStyle(col,1);
+    this.barFill.fillRoundedRect(this.barX-this.barW/2,this.barY,this.barW*pct,this.barH,8);
+
+    this.boxRef.rotation = (1-pct)*0.2*Math.sin(time/130);
+
+    if(gameState.distance >= LEVEL_DISTANCE){
+      this.endGame(true);
+    }
+  }
+
+  applyDamage(type){
+    gameState.durability = Math.max(0, gameState.durability - DAMAGE[type]);
+    this.cameras.main.flash(120,224,122,122,false);
+    this.cameras.main.shake(140,0.006);
+    this.tweens.add({ targets:this.boxRef, scaleX:0.8, scaleY:1.15, duration:80, yoyo:true });
+    if(gameState.durability<=0){
+      this.endGame(false);
+    }
+  }
+
+  endGame(won){
+    if(!gameState.running) return;
+    gameState.running = false;
+    this.time.delayedCall(250, ()=>{
+      if(won){
+        document.getElementById('win-distance').textContent = Math.floor(gameState.distance)+'m';
+        document.getElementById('win-condition').textContent = Math.round(gameState.durability)+'%';
+        document.getElementById('win-overlay').classList.remove('hidden');
+      } else {
+        document.getElementById('go-distance').textContent = Math.floor(gameState.distance)+'m';
+        document.getElementById('gameover-overlay').classList.remove('hidden');
+      }
+    });
+  }
+}
+
+const config = {
+  type: Phaser.AUTO,
+  parent: 'phaser-container',
+  width: 720,
+  height: 405,
+  backgroundColor: '#150c26',
+  scale:{ mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  scene: [RunnerScene]
+};
+
+let game = null;
+function startGame(){
+  if(typeof Phaser === 'undefined'){
+    alert('The game engine could not load — check your internet connection and reload the page. If this keeps happening, try opening the page directly in Safari rather than a preview/share view.');
+    return;
+  }
+  document.getElementById('start-overlay').classList.add('hidden');
+  document.getElementById('gameover-overlay').classList.add('hidden');
+  document.getElementById('win-overlay').classList.add('hidden');
+  if(game){ game.destroy(true); }
+  game = new Phaser.Game(config);
+}
+
+function goHome(){
+  document.getElementById('gameover-overlay').classList.add('hidden');
+  document.getElementById('win-overlay').classList.add('hidden');
+  document.getElementById('start-overlay').classList.remove('hidden');
+  if(game){ game.destroy(true); game = null; }
+}
+
+// Touch-safe binding: iOS Safari can occasionally swallow a bare 'click'
+// after a touch, so we handle touchend directly (and guard against the
+// click that follows it firing a second time).
+function bindTap(el, handler){
+  if(!el) return;
+  let recentTouch = false;
+  el.addEventListener('touchend', function(e){
+    recentTouch = true;
+    e.preventDefault();
+    handler(e);
+    setTimeout(function(){ recentTouch = false; }, 400);
+  }, { passive:false });
+  el.addEventListener('click', function(e){
+    if(recentTouch) return;
+    handler(e);
+  });
+}
+
+bindTap(document.getElementById('start-btn'), startGame);
+bindTap(document.getElementById('retry-btn'), startGame);
+bindTap(document.getElementById('play-again-btn'), startGame);
+bindTap(document.getElementById('home-btn-go'), goHome);
+bindTap(document.getElementById('home-btn-win'), goHome);
+
+bindTap(document.getElementById('copy-btn'), function(){
+  const code = document.getElementById('coupon-code').textContent;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(code).then(function(){
+      document.getElementById('copy-note').textContent = 'Copied to clipboard';
+      setTimeout(function(){ document.getElementById('copy-note').textContent=''; }, 1800);
+    }).catch(function(){
+      document.getElementById('copy-note').textContent = code;
+    });
+  } else {
+    document.getElementById('copy-note').textContent = code;
+  }
+});
+</script>
+</body>
+</html>
