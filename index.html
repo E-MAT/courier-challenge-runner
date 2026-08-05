@@ -115,6 +115,20 @@
   #hint{ position:absolute; bottom:8px; left:0; right:0; text-align:center; color:rgba(243,233,214,0.4); font-size:10.5px; letter-spacing:0.03em; z-index:5; pointer-events:none; }
   #watermark{ position:absolute; bottom:10px; right:14px; z-index:6; opacity:0.55; pointer-events:none; }
   #watermark svg{ height:13px; width:auto; display:block; }
+
+  #rotate-overlay{
+    position:fixed; inset:0; z-index:9999;
+    display:none; flex-direction:column; align-items:center; justify-content:center;
+    background:
+      radial-gradient(120% 100% at 50% 0%, rgba(147,57,242,0.28), transparent 55%),
+      linear-gradient(180deg, rgba(21,12,38,0.98), rgba(20,11,34,0.99));
+    color:var(--paper); text-align:center; padding:24px;
+  }
+  #rotate-overlay.visible{ display:flex; }
+  #rotate-overlay .icon{ width:56px; height:56px; margin-bottom:18px; animation:rotate-hint 1.8s ease-in-out infinite; }
+  #rotate-overlay h2{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:18px; margin:0 0 6px; color:var(--paper); }
+  #rotate-overlay p{ font-size:13px; line-height:1.4; color:#d9cce9; max-width:280px; margin:0; }
+  @keyframes rotate-hint{ 0%,100%{ transform:rotate(0deg); } 50%{ transform:rotate(-90deg); } }
 </style>
 </head>
 <body>
@@ -180,12 +194,26 @@
     </svg>
   </div>
 </div>
+<div id="rotate-overlay">
+  <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="6" y="2" width="12" height="20" rx="2.5" stroke="#f3e9d6" stroke-width="1.6"/>
+    <circle cx="12" cy="18.4" r="0.9" fill="#f3e9d6"/>
+  </svg>
+  <h2>Turn your device sideways</h2>
+  <p>This delivery run is easier with a wider view — rotate to landscape to keep playing.</p>
+</div>
 <script>
 const BRAND = 0x9339f2;
 const BRAND_GLOW = 0xc79cf5;
 const BRAND_DEEP = 0x5b1fa6;
 
 const LEVEL_DISTANCE = 1400;
+const ARRIVAL_SPEED = 150;
+// The widest obstacle (the hole, ~244px wide once scaled) needs about 460 "meters" of travel
+// between spawning off the right edge and clearing the left edge, at the constant 2-pixels-per-meter
+// scroll ratio the game uses. Stopping spawns here guarantees the road is clear before LEVEL_DISTANCE,
+// so no obstacle needs to be force-removed when the arrival sequence begins.
+const LAST_OBSTACLE_DISTANCE = 900;
 const DURABILITY_MAX = 100;
 const GROUND_Y_RATIO = 0.74;
 const DAMAGE = { ground: 30, air: 26 };
@@ -194,8 +222,51 @@ const JUMP_VELOCITY = -620;
 
 let gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:0, isJumping:false, isDucking:false };
 
+const OBSTACLE_DEFS = {
+  ground: [
+    { key:'obs_hole',    src:'assets/images/obstacles/bottom/hole.png',           targetH:64 },
+    { key:'obs_manhole', src:'assets/images/obstacles/bottom/manhole.png',        targetH:76 },
+    { key:'obs_leaves',  src:'assets/images/obstacles/bottom/pile-of-leaves.png', targetH:66 },
+    { key:'obs_scooter', src:'assets/images/obstacles/bottom/scooter.png',        targetH:90 }
+  ],
+  air: [
+    { key:'obs_stopsign',   src:'assets/images/obstacles/top/stop-sign.png',      targetH:190 },
+    { key:'obs_roadworks',  src:'assets/images/obstacles/top/road-works-sign.png',targetH:190 }
+  ]
+};
+const FINISH_DEF = { key:'parcel_machine', src:'assets/images/parcel-machine.png', targetH:210 };
+
+const COURIER_ANIM_ORIGIN_Y = 0.984375;
+const COURIER_ANIMS = {
+  run: {
+    atlasKey:'courier_run', png:'assets/animations/courier_running.png', json:'assets/animations/courier_running.json',
+    prefix:'courier_running_default_', suffix:'.webp', start:0, end:31, originX:0.5028248587570622, loop:true, heightRatio:1
+  },
+  duck: {
+    // the duck art fills its own canvas just as fully as the run art does (measured: ~247px vs
+    // ~249px of character content out of the same 256px-tall canvas), so scaling both by canvas
+    // height alone keeps them the same height — it just looks wider/bulkier, not shorter/crouched.
+    // heightRatio pulls the duck pose down to a believable crouch height.
+    atlasKey:'courier_duck', png:'assets/animations/courier_ducking.png', json:'assets/animations/courier_ducking.json',
+    prefix:'courier_ducking_ducking_', suffix:'.png', start:0, end:10, originX:0.5, loop:true, heightRatio:0.75
+  },
+  walk: {
+    // measured content bbox is 115x250 out of the same 256px-tall canvas — essentially the same
+    // fill ratio as running (120x249), so it shares the run scale rather than needing its own ratio.
+    atlasKey:'courier_walk', png:'assets/animations/courier_walking.png', json:'assets/animations/courier_walking.json',
+    prefix:'courier_walking_default_', suffix:'.png', start:0, end:18, originX:0.5, loop:true, heightRatio:1
+  }
+};
+
 class RunnerScene extends Phaser.Scene {
   constructor(){ super('runner'); }
+
+  preload(){
+    OBSTACLE_DEFS.ground.forEach(d=>this.load.image(d.key, d.src));
+    OBSTACLE_DEFS.air.forEach(d=>this.load.image(d.key, d.src));
+    this.load.image(FINISH_DEF.key, FINISH_DEF.src);
+    Object.values(COURIER_ANIMS).forEach(a=>this.load.atlas(a.atlasKey, a.png, a.json));
+  }
 
   create(){
     const w = this.scale.width, h = this.scale.height;
@@ -238,29 +309,36 @@ class RunnerScene extends Phaser.Scene {
     this.playerX = w*0.22;
     this.playerContainer = this.add.container(this.playerX, this.groundY);
     this.buildCourier();
+    // keep the courier drawn in front of obstacles/the parcel machine regardless of add order
+    this.playerContainer.setDepth(5);
 
     this.obstacles = [];
     this.spawnTimer = 0;
     this.spawnInterval = 1000;
 
-    this.hudBg = this.add.graphics();
+    this.finish = null;
+    this.finishTriggered = false;
+    this.arriving = false;
+
+    const HUD_DEPTH = 20;
+    this.hudBg = this.add.graphics().setDepth(HUD_DEPTH);
     this.hudBg.fillStyle(0x140b22, 0.6);
     this.hudBg.fillRoundedRect(12,12,w-24,50,10);
     this.hudBg.lineStyle(1,0x9339f2,0.3);
     this.hudBg.strokeRoundedRect(12,12,w-24,50,10);
 
-    this.hudLogo = this.add.graphics();
+    this.hudLogo = this.add.graphics().setDepth(HUD_DEPTH);
     this.hudLogo.fillStyle(BRAND,1);
     this.hudLogo.fillRoundedRect(22,24,26,26,6);
-    this.hudLogoText = this.add.text(35,37,'V',{fontFamily:'Space Grotesk',fontSize:'16px',fontStyle:'700',color:'#ffffff'}).setOrigin(0.5);
+    this.hudLogoText = this.add.text(35,37,'V',{fontFamily:'Space Grotesk',fontSize:'16px',fontStyle:'700',color:'#ffffff'}).setOrigin(0.5).setDepth(HUD_DEPTH);
 
-    this.distText = this.add.text(58,18,'0 m',{ fontFamily:'Space Grotesk', fontSize:'22px', fontStyle:'700', color:'#f3e9d6' });
-    this.distLabel = this.add.text(58,42,'DISTANCE',{ fontFamily:'Inter', fontSize:'9px', color:'#b9a9d6', letterSpacing:1 });
+    this.distText = this.add.text(58,18,'0 m',{ fontFamily:'Space Grotesk', fontSize:'22px', fontStyle:'700', color:'#f3e9d6' }).setDepth(HUD_DEPTH);
+    this.distLabel = this.add.text(58,42,'DISTANCE',{ fontFamily:'Inter', fontSize:'9px', color:'#b9a9d6', letterSpacing:1 }).setDepth(HUD_DEPTH);
 
     this.barX = w*0.5; this.barY = 26; this.barW = w*0.36; this.barH = 14;
-    this.durLabel = this.add.text(this.barX, this.barY-13, 'PACKAGE CONDITION',{ fontFamily:'Inter', fontSize:'9px', color:'#b9a9d6', letterSpacing:1 });
-    this.barBg = this.add.graphics();
-    this.barFill = this.add.graphics();
+    this.durLabel = this.add.text(this.barX, this.barY-13, 'PACKAGE CONDITION',{ fontFamily:'Inter', fontSize:'9px', color:'#b9a9d6', letterSpacing:1 }).setDepth(HUD_DEPTH);
+    this.barBg = this.add.graphics().setDepth(HUD_DEPTH);
+    this.barFill = this.add.graphics().setDepth(HUD_DEPTH);
 
     this.input.keyboard.on('keydown-SPACE', ()=>this.tryJump());
     this.input.keyboard.on('keydown-UP', ()=>this.tryJump());
@@ -327,123 +405,80 @@ class RunnerScene extends Phaser.Scene {
   }
 
   buildCourier(){
-    this.courierGfx = this.add.graphics();
-    this.playerContainer.add(this.courierGfx);
+    Object.entries(COURIER_ANIMS).forEach(([key, a])=>{
+      if(!this.anims.exists(key)){
+        this.anims.create({
+          key,
+          frames: this.anims.generateFrameNames(a.atlasKey, {
+            prefix: a.prefix, start: a.start, end: a.end, zeroPad: 3, suffix: a.suffix
+          }),
+          frameRate: 1000/42,
+          repeat: a.loop ? -1 : 0
+        });
+      }
+    });
 
-    const box = this.add.container(0,0);
-    const bg = this.add.graphics();
-    // cardboard body
-    bg.fillStyle(0xc9a06e,1);
-    bg.fillRoundedRect(-17,-15,34,30,3);
-    bg.lineStyle(2,0x8a6a3f,1);
-    bg.strokeRoundedRect(-17,-15,34,30,3);
-    // subtle box-flap shading on the edges
-    bg.fillStyle(0x8a6a3f,0.25);
-    bg.fillRect(-17,-15,34,4);
-    bg.fillRect(-17,11,34,4);
-    // kraft sealing tape, vertical
-    bg.fillStyle(0xe8ddc4,0.85);
-    bg.fillRect(-5,-15,10,30);
-    // branded purple tape band, horizontal
-    bg.fillStyle(0x9339f2,0.95);
-    bg.fillRect(-19,-4,38,8);
-    bg.lineStyle(1,0x5b1fa6,0.8);
-    bg.lineBetween(-19,-4,19,-4);
-    bg.lineBetween(-19,4,19,4);
-    box.add(bg);
-    // logo badge (brand mark) on the face, off the tape
-    const badge = this.add.graphics();
-    badge.fillStyle(0xf3e9d6,1);
-    badge.fillRoundedRect(-8,-12,16,10,2);
-    box.add(badge);
-    const badgeMark = this.add.text(0,-7,'V',{ fontFamily:'Space Grotesk', fontSize:'9px', fontStyle:'700', color:'#5b1fa6' }).setOrigin(0.5);
-    box.add(badgeMark);
-    this.boxRef = box;
+    this.shadowGfx = this.add.graphics();
+    this.playerContainer.add(this.shadowGfx);
+
+    // both atlases share the same 256px frame height, so this is the shared baseline scale;
+    // per-animation heightRatio then tunes each pose relative to it (see COURIER_ANIMS)
+    const runnerH = 116;
+    const runDef = COURIER_ANIMS.run;
+    const firstFrameName = `${runDef.prefix}${String(runDef.start).padStart(3,'0')}${runDef.suffix}`;
+    const frame = this.textures.get(runDef.atlasKey).get(firstFrameName);
+    this.playerBaseScale = runnerH / frame.height;
+
+    this.playerSprite = this.add.sprite(0, 0, runDef.atlasKey, firstFrameName);
+    this.playerContainer.add(this.playerSprite);
+    this._currentAnimKey = null;
+    this.setCourierAnim('run');
 
     this.boxGlow = this.add.graphics();
-    box.addAt(this.boxGlow, 0);
+    this.playerContainer.addAt(this.boxGlow, 1);
 
-    this.playerContainer.add(box);
     this.redrawCourier();
   }
 
+  setCourierAnim(key){
+    if(this._currentAnimKey === key) return;
+    const def = COURIER_ANIMS[key];
+    this.playerSprite.setOrigin(def.originX, COURIER_ANIM_ORIGIN_Y);
+    this.playerSprite.setScale(this.playerBaseScale * def.heightRatio);
+    this.playerSprite.play(key);
+    this._currentAnimKey = key;
+  }
+
   redrawCourier(){
-    const g = this.courierGfx;
-    g.clear();
     const ducking = gameState.isDucking && !gameState.isJumping;
-    const bodyH = ducking ? 24 : 38;
-    const bodyY = ducking ? 6 : -24;
-    const headY = ducking ? -2 : -34;
 
     const shadowScale = gameState.isJumping ? Phaser.Math.Clamp(1 - Math.abs(gameState.vy)/900, 0.35, 1) : 1;
-    g.fillStyle(0x000000, 0.35*shadowScale);
-    g.fillEllipse(0, this.groundY - this.playerContainer.y + 44, 44*shadowScale, 11*shadowScale);
+    this.shadowGfx.clear();
+    this.shadowGfx.fillStyle(0x000000, 0.35*shadowScale);
+    this.shadowGfx.fillEllipse(0, this.groundY - this.playerContainer.y, 40*shadowScale, 10*shadowScale);
 
-    const runPhase = Math.sin((this._nowMs||0)/60);
-    const running = !ducking && !gameState.isJumping;
-    const bob = running ? Math.abs(Math.sin((this._nowMs||0)/60))*2 : 0;
-
-    // legs
-    g.fillStyle(0x0b0b0b,1);
-    if(!ducking){
-      g.fillRoundedRect(-14, 10+runPhase*3, 10, 26-runPhase*4, 4);
-      g.fillRoundedRect(4, 10-runPhase*3, 10, 26+runPhase*4, 4);
-      // feet
-      g.fillStyle(0x0d0d0d,1);
-      g.fillEllipse(-9, 34+runPhase*3, 13, 6);
-      g.fillEllipse(9, 34-runPhase*3, 13, 6);
-    } else {
-      // crouched, but still planted on the ground — short bent legs reaching the shadow line
-      g.fillRoundedRect(-16, bodyY+bodyH-4, 12, 20, 4);
-      g.fillRoundedRect(5, bodyY+bodyH-4, 12, 20, 4);
-      g.fillStyle(0x0d0d0d,1);
-      g.fillEllipse(-10, bodyY+bodyH+18, 13, 6);
-      g.fillEllipse(11, bodyY+bodyH+18, 13, 6);
+    // jumping always freezes on the run cycle — ducking is already forced off mid-air
+    this.setCourierAnim(this.arriving ? 'walk' : (ducking ? 'duck' : 'run'));
+    if(gameState.isJumping){
+      if(!this.playerSprite.anims.isPaused) this.playerSprite.anims.pause();
+    } else if(this.playerSprite.anims.isPaused){
+      this.playerSprite.anims.resume();
     }
 
-    // torso
-    g.fillStyle(BRAND,1);
-    g.fillRoundedRect(-18, bodyY-bob, 36, bodyH, 8);
-
-    // where the box is held: in front of the chest, to the direction of travel
-    const holdX = ducking ? 24 : 20;
-    const holdY = (ducking ? bodyY+2 : -14) - bob;
-
-    // arms, angled down from the shoulders to cradle the box underneath
-    g.lineStyle(7, BRAND, 1);
-    g.lineBetween(-13, bodyY+8-bob, holdX-13, holdY+9);
-    g.lineBetween(13, bodyY+8-bob, holdX+13, holdY+9);
-    g.fillStyle(0xe7b98c,1);
-    g.fillCircle(holdX-13, holdY+9, 4);
-    g.fillCircle(holdX+13, holdY+9, 4);
-
-    // head
-    g.fillStyle(0xe7b98c,1);
-    g.fillCircle(0, headY-bob, 12);
-
-    // black baseball cap with forward brim + small brand button
-    g.fillStyle(0x0d0d0d,1);
-    g.fillEllipse(-1, headY-8-bob, 25, 15);
-    g.fillEllipse(9, headY-3-bob, 15, 6);
-    g.fillStyle(BRAND,1);
-    g.fillCircle(-1, headY-14-bob, 2.2);
-
-    this.boxRef.setPosition(holdX, holdY);
-
     this.boxGlow.clear();
-    this.boxGlow.fillStyle(BRAND_GLOW, 0.18);
-    this.boxGlow.fillCircle(0,0,26);
+    this.boxGlow.fillStyle(BRAND_GLOW, 0.16);
+    this.boxGlow.fillCircle(14, -40, 24);
   }
 
   tryJump(){
-    if(!gameState.running) return;
+    if(!gameState.running || this.arriving) return;
     if(gameState.isJumping) return;
     if(gameState.isDucking) this.endDuck();
     gameState.isJumping = true;
     gameState.vy = JUMP_VELOCITY;
   }
   startDuck(){
-    if(!gameState.running) return;
+    if(!gameState.running || this.arriving) return;
     if(gameState.isJumping) return;
     gameState.isDucking = true;
   }
@@ -453,68 +488,64 @@ class RunnerScene extends Phaser.Scene {
     const w=this.scale.width;
     const groundType = Math.random() < 0.55;
     const type = groundType ? 'ground' : 'air';
-    const sub = groundType ? Phaser.Utils.Array.GetRandom(['pothole','puddle','cone']) : Phaser.Utils.Array.GetRandom(['sign_stop','sign_warn','sign_speed']);
-    const x = w + 40;
-    const y = groundType ? this.groundY + 40 : this.groundY - 56;
-    const g = this.add.graphics();
-    this.obstacles.push({ gfx:g, x, y, type, sub, hit:false, width: groundType?54:64, swingSeed: Math.random()*1000 });
+    const def = Phaser.Utils.Array.GetRandom(OBSTACLE_DEFS[type]);
+    const tex = this.textures.get(def.key).getSourceImage();
+    const scale = def.targetH / tex.height;
+    const dispW = tex.width*scale, dispH = def.targetH;
+    const x = w + dispW/2 + 20;
+    const y = groundType ? this.groundY + 46 : this.groundY + 46;
+
+    const img = this.add.image(x, y, def.key).setOrigin(0.5, 1).setDisplaySize(dispW, dispH);
+    this.obstacles.push({ img, x, type, hit:false, width: dispW, swingSeed: Math.random()*1000 });
   }
 
-  redrawObstacle(o, time){
-    const g = o.gfx;
-    g.clear();
-    if(o.sub==='pothole'){
-      g.fillStyle(0x140b22,1);
-      g.fillEllipse(o.x,o.y+6,54,22);
-      g.fillStyle(0x3a3330,1);
-      g.fillEllipse(o.x,o.y+3,40,14);
-    } else if(o.sub==='puddle'){
-      g.fillStyle(0x4a5568,0.6);
-      g.fillEllipse(o.x,o.y+6,58,18);
-      g.lineStyle(2,BRAND_GLOW,0.55);
-      g.strokeEllipse(o.x,o.y+6,58,18);
-    } else if(o.sub==='cone'){
-      g.fillStyle(0x000000,0.25);
-      g.fillEllipse(o.x,o.y+11,34,9);
-      g.fillStyle(0xc96a3e,1);
-      g.fillTriangle(o.x-16,o.y+10, o.x+16,o.y+10, o.x,o.y-20);
-      g.fillStyle(0xf3e9d6,1);
-      g.fillTriangle(o.x-11,o.y+2, o.x+11,o.y+2, o.x+4,o.y-8);
-      g.fillTriangle(o.x-4,o.y-8, o.x-11,o.y+2, o.x+4,o.y-8);
-      g.fillStyle(0x1c1712,1);
-      g.fillRoundedRect(o.x-19,o.y+7,38,7,2);
-    } else {
-      // road sign hanging from an overhead bar, swaying gently in the wind
+  updateObstacleVisual(o, time){
+    if(o.type==='air'){
       const sway = Math.sin((time||0)/300 + o.swingSeed) * 5;
-      g.fillStyle(0x3a3330,1);
-      g.fillRect(o.x-32, o.y-30, 64, 6);
-      g.fillStyle(0x1c1712,1);
-      g.fillRect(o.x-3, o.y-30, 6, 22);
+      o.img.x = o.x + sway;
+    } else {
+      o.img.x = o.x;
+    }
+  }
 
-      const sx = o.x + sway, sy = o.y-2;
-      if(o.sub==='sign_stop'){
-        g.fillStyle(0x7a2e2e,1);
-        g.fillRoundedRect(sx-16, sy-16, 32, 32, 8);
-        g.lineStyle(2,0xf3e9d6,0.9);
-        g.strokeRoundedRect(sx-16, sy-16, 32, 32, 8);
-        g.fillStyle(0xf3e9d6,1);
-        g.fillRect(sx-10, sy-3, 20, 6);
-      } else if(o.sub==='sign_warn'){
-        g.fillStyle(0xd9a548,1);
-        g.fillTriangle(sx, sy-18, sx-18, sy+14, sx+18, sy+14);
-        g.lineStyle(2,0x1c1712,0.8);
-        g.strokeTriangle(sx, sy-18, sx-18, sy+14, sx+18, sy+14);
-        g.fillStyle(0x1c1712,1);
-        g.fillRect(sx-2, sy-8, 4, 12);
-        g.fillCircle(sx, sy+9, 2.2);
-      } else {
-        g.fillStyle(0xf3e9d6,1);
-        g.fillCircle(sx, sy, 17);
-        g.lineStyle(4,0x7a2e2e,1);
-        g.strokeCircle(sx, sy, 17);
-        g.fillStyle(0x1c1712,1);
-        g.fillRect(sx-2, sy-10, 4, 20);
+  // Called once, the instant the run distance is covered: the endless-runner part of the
+  // level is over. The world stops scrolling (the "camera" stops), the parcel machine slides
+  // in from off-screen just like an obstacle would and settles near the right edge, then the
+  // courier switches to the walk cycle and crosses the frozen scene on its own to reach it —
+  // making it read as a scripted arrival, not more of the same dodging.
+  startArrival(w){
+    this.arriving = true;
+    gameState.isJumping = false;
+    gameState.isDucking = false;
+    gameState.vy = 0;
+    this.playerContainer.y = this.groundY;
+
+    const tex = this.textures.get(FINISH_DEF.key).getSourceImage();
+    const scale = FINISH_DEF.targetH / tex.height;
+    const dispW = tex.width*scale, dispH = FINISH_DEF.targetH;
+    const startX = w + dispW/2 + 20; // enters from off-screen, same as any obstacle
+    const restX = w - dispW/2 - 40;  // fixed resting spot, fully on screen near the right edge
+    const img = this.add.image(startX, this.groundY+46, FINISH_DEF.key).setOrigin(0.5,1).setDisplaySize(dispW,dispH);
+    this.finish = { img, x: startX, restX, width: dispW, settled: false };
+  }
+
+  updateFinish(dt){
+    if(!this.arriving || !this.finish || this.finishTriggered) return;
+
+    if(!this.finish.settled){
+      this.finish.x -= ARRIVAL_SPEED*dt;
+      if(this.finish.x <= this.finish.restX){
+        this.finish.x = this.finish.restX;
+        this.finish.settled = true;
       }
+      this.finish.img.x = this.finish.x;
+      return; // the courier waits for the machine to settle before it starts walking
+    }
+
+    this.playerContainer.x += ARRIVAL_SPEED*dt;
+    if(this.playerContainer.x >= this.finish.x - this.finish.width*0.42){
+      this.finishTriggered = true;
+      this.endGame(true);
     }
   }
 
@@ -524,36 +555,42 @@ class RunnerScene extends Phaser.Scene {
     const w=this.scale.width, h=this.scale.height;
     this._nowMs = time;
 
-    gameState.distance += gameState.speed*dt*0.5;
-    gameState.speed = Math.min(560, 340 + gameState.distance*0.09);
+    if(!this.arriving){
+      gameState.distance += gameState.speed*dt*0.5;
+      gameState.speed = Math.min(560, 340 + gameState.distance*0.09);
+    }
     this.distText.setText(Math.floor(gameState.distance)+' m');
 
-    this.skylineOffset = (this.skylineOffset + gameState.speed*dt*0.12);
-    const totalW = this.buildings.reduce((a,b)=>Math.max(a,b.x+b.w),0);
-    if(this.skylineOffset > totalW) this.skylineOffset -= totalW;
-    this.drawSkyline();
+    if(!this.arriving){
+      // "the camera stops": once arriving, we simply stop touching these — the last frame
+      // drawn stays on screen, so the road/skyline read as having come to a halt.
+      this.skylineOffset = (this.skylineOffset + gameState.speed*dt*0.12);
+      const totalW = this.buildings.reduce((a,b)=>Math.max(a,b.x+b.w),0);
+      if(this.skylineOffset > totalW) this.skylineOffset -= totalW;
+      this.drawSkyline();
 
-    this.groundOffset = (this.groundOffset + gameState.speed*dt) % 44;
-    this.groundGfx.clear();
-    // subtle depth shading: slightly lighter near the horizon line, darker toward the foreground
-    const roadTop = this.groundY+46, roadH = h-roadTop;
-    const rc1 = Phaser.Display.Color.ValueToColor(0x2a221c);
-    const rc2 = Phaser.Display.Color.ValueToColor(0x140b12);
-    const bands = 10;
-    for(let i=0;i<bands;i++){
-      const t = i/bands;
-      const c = Phaser.Display.Color.Interpolate.ColorWithColor(rc1, rc2, 1, t);
-      this.groundGfx.fillStyle(Phaser.Display.Color.GetColor(c.r,c.g,c.b),1);
-      this.groundGfx.fillRect(0, roadTop + roadH*t, w, roadH/bands + 1);
+      this.groundOffset = (this.groundOffset + gameState.speed*dt) % 44;
+      this.groundGfx.clear();
+      // subtle depth shading: slightly lighter near the horizon line, darker toward the foreground
+      const roadTop = this.groundY+46, roadH = h-roadTop;
+      const rc1 = Phaser.Display.Color.ValueToColor(0x2a221c);
+      const rc2 = Phaser.Display.Color.ValueToColor(0x140b12);
+      const bands = 10;
+      for(let i=0;i<bands;i++){
+        const t = i/bands;
+        const c = Phaser.Display.Color.Interpolate.ColorWithColor(rc1, rc2, 1, t);
+        this.groundGfx.fillStyle(Phaser.Display.Color.GetColor(c.r,c.g,c.b),1);
+        this.groundGfx.fillRect(0, roadTop + roadH*t, w, roadH/bands + 1);
+      }
+      this.groundGfx.lineStyle(3,BRAND,0.4);
+      for(let x=-44+this.groundOffset; x<w; x+=44){
+        this.groundGfx.lineBetween(x, this.groundY+46, x+20, this.groundY+46);
+      }
+      this.groundGfx.lineStyle(3,0x5a3d2b,0.8);
+      this.groundGfx.lineBetween(0,this.groundY+46,w,this.groundY+46);
+      this.groundGfx.fillStyle(0xffffff,0.03);
+      this.groundGfx.fillRect(0,this.groundY+46,w,6);
     }
-    this.groundGfx.lineStyle(3,BRAND,0.4);
-    for(let x=-44+this.groundOffset; x<w; x+=44){
-      this.groundGfx.lineBetween(x, this.groundY+46, x+20, this.groundY+46);
-    }
-    this.groundGfx.lineStyle(3,0x5a3d2b,0.8);
-    this.groundGfx.lineBetween(0,this.groundY+46,w,this.groundY+46);
-    this.groundGfx.fillStyle(0xffffff,0.03);
-    this.groundGfx.fillRect(0,this.groundY+46,w,6);
 
     this.weatherGfx.clear();
     this.leaves.forEach(lf=>{
@@ -591,41 +628,48 @@ class RunnerScene extends Phaser.Scene {
     }
     this.redrawCourier();
 
-    this.spawnTimer += delta;
-    const interval = Math.max(480, this.spawnInterval - gameState.distance*0.35);
-    if(this.spawnTimer > interval){
-      this.spawnTimer = 0;
-      this.spawnObstacle();
-    }
-
-    for(let i=this.obstacles.length-1;i>=0;i--){
-      const o = this.obstacles[i];
-      o.x -= gameState.speed*dt;
-      this.redrawObstacle(o, time);
-
-      const dx = Math.abs(o.x - this.playerX);
-      if(!o.hit && dx < o.width*0.42){
-        let collided = false;
-        if(o.type==='ground'){
-          const clearance = this.groundY - this.playerContainer.y;
-          if(clearance < 46) collided = true;
-        } else {
-          const ducking = gameState.isDucking && !gameState.isJumping;
-          if(!ducking) collided = true;
-        }
-        if(collided){
-          o.hit = true;
-          this.applyDamage(o.type);
-        } else {
-          o.hit = true;
-        }
+    if(!this.arriving){
+      this.spawnTimer += delta;
+      const interval = Math.max(480, this.spawnInterval - gameState.distance*0.35);
+      if(this.spawnTimer > interval && gameState.distance < LAST_OBSTACLE_DISTANCE){
+        this.spawnTimer = 0;
+        this.spawnObstacle();
       }
 
-      if(o.x < -60){
-        o.gfx.destroy();
-        this.obstacles.splice(i,1);
+      for(let i=this.obstacles.length-1;i>=0;i--){
+        const o = this.obstacles[i];
+        o.x -= gameState.speed*dt;
+        this.updateObstacleVisual(o, time);
+
+        const dx = Math.abs(o.x - this.playerX);
+        if(!o.hit && dx < o.width*0.42){
+          let collided = false;
+          if(o.type==='ground'){
+            const clearance = this.groundY - this.playerContainer.y;
+            if(clearance < 46) collided = true;
+          } else {
+            const ducking = gameState.isDucking && !gameState.isJumping;
+            if(!ducking) collided = true;
+          }
+          if(collided){
+            o.hit = true;
+            this.applyDamage(o.type);
+          } else {
+            o.hit = true;
+          }
+        }
+
+        if(o.x < -60){
+          o.img.destroy();
+          this.obstacles.splice(i,1);
+        }
       }
     }
+
+    if(!this.arriving && gameState.distance >= LEVEL_DISTANCE){
+      this.startArrival(w);
+    }
+    this.updateFinish(dt);
 
     this.barBg.clear();
     this.barBg.fillStyle(0x140b22,0.6);
@@ -636,18 +680,14 @@ class RunnerScene extends Phaser.Scene {
     this.barFill.fillStyle(col,1);
     this.barFill.fillRoundedRect(this.barX-this.barW/2,this.barY,this.barW*pct,this.barH,8);
 
-    this.boxRef.rotation = (1-pct)*0.2*Math.sin(time/130);
-
-    if(gameState.distance >= LEVEL_DISTANCE){
-      this.endGame(true);
-    }
+    this.playerContainer.rotation = (1-pct)*0.06*Math.sin(time/130);
   }
 
   applyDamage(type){
     gameState.durability = Math.max(0, gameState.durability - DAMAGE[type]);
     this.cameras.main.flash(120,224,122,122,false);
     this.cameras.main.shake(140,0.006);
-    this.tweens.add({ targets:this.boxRef, scaleX:0.8, scaleY:1.15, duration:80, yoyo:true });
+    this.tweens.add({ targets:this.playerContainer, scaleX:0.88, scaleY:1.1, duration:80, yoyo:true });
     if(gameState.durability<=0){
       this.endGame(false);
     }
@@ -680,16 +720,63 @@ const config = {
 };
 
 let game = null;
+
+// Reliable baseline: no browser lets a page force-rotate the physical device, and iOS Safari
+// doesn't support the Orientation Lock API at all outside an installed home-screen PWA. So the
+// overlay below is the real fix — it covers the game and pauses it whenever a touch device is
+// held in portrait. tryLockLandscape() below is layered on top as a best-effort nicety for the
+// browsers (mainly Android Chrome, and only in fullscreen) that do support locking.
+function isTouchDevice(){
+  return window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+}
+
+(function(){
+  const overlay = document.getElementById('rotate-overlay');
+  const orientationMQ = window.matchMedia('(orientation: portrait)');
+
+  function updateRotateOverlay(){
+    const shouldShow = orientationMQ.matches && isTouchDevice();
+    overlay.classList.toggle('visible', shouldShow);
+    if(game && game.scene.isActive('runner') && shouldShow){
+      game.scene.pause('runner');
+    } else if(game && game.scene.isPaused('runner') && !shouldShow){
+      game.scene.resume('runner');
+    }
+  }
+
+  orientationMQ.addEventListener('change', updateRotateOverlay);
+  window.addEventListener('resize', updateRotateOverlay);
+  window.addEventListener('orientationchange', updateRotateOverlay);
+  updateRotateOverlay();
+
+  window.updateRotateOverlay = updateRotateOverlay;
+})();
+
+async function tryLockLandscape(){
+  try{
+    if(document.documentElement.requestFullscreen && !document.fullscreenElement){
+      await document.documentElement.requestFullscreen();
+    }
+    if(screen.orientation && screen.orientation.lock){
+      await screen.orientation.lock('landscape');
+    }
+  }catch(e){
+    // Unsupported or denied (iOS Safari, desktop, etc.) — the rotate overlay is the real fallback.
+  }
+}
+
 function startGame(){
   if(typeof Phaser === 'undefined'){
     alert('The game engine could not load — check your internet connection and reload the page. If this keeps happening, try opening the page directly in Safari rather than a preview/share view.');
     return;
   }
+  if(isTouchDevice()) tryLockLandscape();
   document.getElementById('start-overlay').classList.add('hidden');
   document.getElementById('gameover-overlay').classList.add('hidden');
   document.getElementById('win-overlay').classList.add('hidden');
   if(game){ game.destroy(true); }
   game = new Phaser.Game(config);
+  window.updateRotateOverlay();
 }
 
 function goHome(){
