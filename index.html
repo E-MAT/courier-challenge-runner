@@ -215,19 +215,33 @@ const ARRIVAL_SPEED = 150;
 // so no obstacle needs to be force-removed when the arrival sequence begins.
 const LAST_OBSTACLE_DISTANCE = 900;
 const DURABILITY_MAX = 100;
-const GROUND_Y_RATIO = 0.74;
+// Measured directly from the background art (1536x1024 source): the purple brick band starts
+// at y=885 (character + ground obstacles stand on its top edge) and the light curb strip above
+// it runs from y=831 to y=884 (obstacle-post bottoms land there so they read as posts planted
+// on the curb, not floating over the brick).
+const GROUND_Y_RATIO = 885/1024;
+const POST_Y_RATIO = 831/1024;
+// Nudges everything toward the bottom of the 405px-tall canvas without spilling off it or
+// off the background's own bands: the purple ground band leaves ~55px of margin below its top
+// edge, and the grey curb band above it is only ~21px tall, so each gets pushed as far down as
+// its own band comfortably allows.
+const GROUND_Y_SHIFT = 50;
+const POST_Y_SHIFT = 20;
 const DAMAGE = { ground: 30, air: 26 };
 const GRAVITY = 1600;
 const JUMP_VELOCITY = -620;
 
 let gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:0, isJumping:false, isDucking:false };
+// Survives across restarts (the Phaser game instance gets destroyed/recreated, but this
+// top-level variable doesn't) so back-to-back runs don't show the same skyline twice in a row.
+let lastBackgroundKey = null;
 
 const OBSTACLE_DEFS = {
   ground: [
-    { key:'obs_hole',    src:'assets/images/obstacles/bottom/hole.png',           targetH:64 },
+    { key:'obs_hole',    src:'assets/images/obstacles/bottom/hole.png',           targetH:32 },
     { key:'obs_manhole', src:'assets/images/obstacles/bottom/manhole.png',        targetH:76 },
     { key:'obs_leaves',  src:'assets/images/obstacles/bottom/pile-of-leaves.png', targetH:66 },
-    { key:'obs_scooter', src:'assets/images/obstacles/bottom/scooter.png',        targetH:90 }
+    { key:'obs_scooter', src:'assets/images/obstacles/bottom/scooter.png',        targetH:72 }
   ],
   air: [
     { key:'obs_stopsign',   src:'assets/images/obstacles/top/stop-sign.png',      targetH:190 },
@@ -235,6 +249,17 @@ const OBSTACLE_DEFS = {
   ]
 };
 const FINISH_DEF = { key:'parcel_machine', src:'assets/images/parcel-machine.png', targetH:210 };
+
+// All six share the identical curb/brick foreground layout — only the skyline and sky
+// embellishment (birds/plane/ship/bridge) differ — so any one can be picked at random.
+const BACKGROUND_DEFS = [
+  { key:'bg_0', src:'assets/images/backgrounds/bg-light.png' },
+  { key:'bg_1', src:'assets/images/backgrounds/bg-light-2.png' },
+  { key:'bg_2', src:'assets/images/backgrounds/bg-light-birds.png' },
+  { key:'bg_3', src:'assets/images/backgrounds/bg-light-bridge.png' },
+  { key:'bg_4', src:'assets/images/backgrounds/bg-light-plane.png' },
+  { key:'bg_5', src:'assets/images/backgrounds/bg-light-ship.png' }
+];
 
 const COURIER_ANIM_ORIGIN_Y = 0.984375;
 const COURIER_ANIMS = {
@@ -265,23 +290,35 @@ class RunnerScene extends Phaser.Scene {
     OBSTACLE_DEFS.ground.forEach(d=>this.load.image(d.key, d.src));
     OBSTACLE_DEFS.air.forEach(d=>this.load.image(d.key, d.src));
     this.load.image(FINISH_DEF.key, FINISH_DEF.src);
+    BACKGROUND_DEFS.forEach(b=>this.load.image(b.key, b.src));
     Object.values(COURIER_ANIMS).forEach(a=>this.load.atlas(a.atlasKey, a.png, a.json));
   }
 
   create(){
     const w = this.scale.width, h = this.scale.height;
-    this.groundY = h*GROUND_Y_RATIO;
-    gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:this.groundY, isJumping:false, isDucking:false };
+    this.groundY = h*GROUND_Y_RATIO + GROUND_Y_SHIFT;
+    this.postY = h*POST_Y_RATIO + POST_Y_SHIFT;
+    // the courier runs halfway between its pre-shift and post-shift ground line, while ground
+    // obstacles and the parcel machine keep the full shift
+    this.courierY = h*GROUND_Y_RATIO + GROUND_Y_SHIFT/2;
+    gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:this.courierY, isJumping:false, isDucking:false };
 
-    this.bgGfx = this.add.graphics();
-    this.drawSky();
-
-    this.skylineGfx = this.add.graphics();
-    this.buildSkyline();
-    this.skylineOffset = 0;
-
-    this.groundGfx = this.add.graphics();
-    this.groundOffset = 0;
+    // Background is a row of full-image panels (not a single repeating tile) so different
+    // skylines can appear within one run: each panel scrolls left and, once fully off-screen,
+    // gets recycled to the right edge with a new image that isn't the same as its new left neighbor.
+    const bgTex = this.textures.get(BACKGROUND_DEFS[0].key).getSourceImage();
+    this.bgScale = h / bgTex.height;
+    this.bgPanelW = bgTex.width * this.bgScale;
+    const panelCount = Math.ceil(w / this.bgPanelW) + 1;
+    this.bgPanels = [];
+    let px = 0;
+    for(let i=0;i<panelCount;i++){
+      const key = this.pickBgKey(lastBackgroundKey);
+      lastBackgroundKey = key;
+      const img = this.add.image(px, 0, key).setOrigin(0,0).setDisplaySize(this.bgPanelW, h).setDepth(-10);
+      this.bgPanels.push({ img, x: px, key });
+      px += this.bgPanelW;
+    }
 
     this.leaves = [];
     for(let i=0;i<18;i++){
@@ -307,7 +344,7 @@ class RunnerScene extends Phaser.Scene {
     this.flashTimer = 0;
 
     this.playerX = w*0.22;
-    this.playerContainer = this.add.container(this.playerX, this.groundY);
+    this.playerContainer = this.add.container(this.playerX, this.courierY);
     this.buildCourier();
     // keep the courier drawn in front of obstacles/the parcel machine regardless of add order
     this.playerContainer.setDepth(5);
@@ -352,57 +389,6 @@ class RunnerScene extends Phaser.Scene {
     this.input.on('pointerup', ()=>this.endDuck());
   }
 
-  drawSky(){
-    const w=this.scale.width,h=this.scale.height;
-    this.bgGfx.clear();
-    const c1 = Phaser.Display.Color.ValueToColor(0x150c26);
-    const c2 = Phaser.Display.Color.ValueToColor(0x3a1f5c);
-    const c3 = Phaser.Display.Color.ValueToColor(0xc96a3e);
-    const steps = 44;
-    for(let i=0;i<steps;i++){
-      const t = i/steps;
-      let c;
-      if(t < 0.55){
-        c = Phaser.Display.Color.Interpolate.ColorWithColor(c1, c2, 1, t/0.55);
-      } else {
-        c = Phaser.Display.Color.Interpolate.ColorWithColor(c2, c3, 1, (t-0.55)/0.45);
-      }
-      this.bgGfx.fillStyle(Phaser.Display.Color.GetColor(c.r,c.g,c.b),1);
-      this.bgGfx.fillRect(0, h*0.62*t, w, h*0.62/steps + 1);
-    }
-    this.bgGfx.fillStyle(0x2f2a28,1);
-    this.bgGfx.fillRect(0,h*0.62,w,h*0.38);
-  }
-
-  buildSkyline(){
-    const w=this.scale.width, h=this.scale.height;
-    this.buildings = [];
-    let x = -40;
-    while(x < w+400){
-      const bw = Phaser.Math.Between(50,110);
-      const bh = Phaser.Math.Between(60,160);
-      this.buildings.push({x, w:bw, h:bh, windows: Phaser.Math.Between(2,5)});
-      x += bw + Phaser.Math.Between(6,18);
-    }
-  }
-
-  drawSkyline(){
-    const w=this.scale.width, h=this.scale.height;
-    const baseY = h*0.62;
-    this.skylineGfx.clear();
-    this.buildings.forEach(b=>{
-      const bx = b.x - this.skylineOffset;
-      if(bx < -150 || bx > w+150) return;
-      this.skylineGfx.fillStyle(0x241a30, 0.9);
-      this.skylineGfx.fillRect(bx, baseY-b.h, b.w, b.h);
-      this.skylineGfx.fillStyle(0xd9a548, 0.5);
-      for(let i=0;i<b.windows;i++){
-        const wx = bx+8+ (i%2)*(b.w/2-4);
-        const wy = baseY-b.h+14+Math.floor(i/2)*22;
-        if(wy < baseY-6) this.skylineGfx.fillRect(wx, wy, 6, 8);
-      }
-    });
-  }
 
   buildCourier(){
     Object.entries(COURIER_ANIMS).forEach(([key, a])=>{
@@ -455,7 +441,7 @@ class RunnerScene extends Phaser.Scene {
     const shadowScale = gameState.isJumping ? Phaser.Math.Clamp(1 - Math.abs(gameState.vy)/900, 0.35, 1) : 1;
     this.shadowGfx.clear();
     this.shadowGfx.fillStyle(0x000000, 0.35*shadowScale);
-    this.shadowGfx.fillEllipse(0, this.groundY - this.playerContainer.y, 40*shadowScale, 10*shadowScale);
+    this.shadowGfx.fillEllipse(0, this.courierY - this.playerContainer.y, 40*shadowScale, 10*shadowScale);
 
     // jumping always freezes on the run cycle — ducking is already forced off mid-air
     this.setCourierAnim(this.arriving ? 'walk' : (ducking ? 'duck' : 'run'));
@@ -484,6 +470,15 @@ class RunnerScene extends Phaser.Scene {
   }
   endDuck(){ gameState.isDucking = false; }
 
+  pickBgKey(excludeKey){
+    if(BACKGROUND_DEFS.length <= 1) return BACKGROUND_DEFS[0].key;
+    let def;
+    do {
+      def = Phaser.Utils.Array.GetRandom(BACKGROUND_DEFS);
+    } while (def.key === excludeKey);
+    return def.key;
+  }
+
   spawnObstacle(){
     const w=this.scale.width;
     const groundType = Math.random() < 0.55;
@@ -493,7 +488,9 @@ class RunnerScene extends Phaser.Scene {
     const scale = def.targetH / tex.height;
     const dispW = tex.width*scale, dispH = def.targetH;
     const x = w + dispW/2 + 20;
-    const y = groundType ? this.groundY + 46 : this.groundY + 46;
+    // ground obstacles sit on the purple band's top edge; overhead obstacle posts land
+    // on the grey curb above it, so they read as posts planted on the curb
+    const y = groundType ? this.groundY : this.postY;
 
     const img = this.add.image(x, y, def.key).setOrigin(0.5, 1).setDisplaySize(dispW, dispH);
     this.obstacles.push({ img, x, type, hit:false, width: dispW, swingSeed: Math.random()*1000 });
@@ -518,14 +515,14 @@ class RunnerScene extends Phaser.Scene {
     gameState.isJumping = false;
     gameState.isDucking = false;
     gameState.vy = 0;
-    this.playerContainer.y = this.groundY;
+    this.playerContainer.y = this.courierY;
 
     const tex = this.textures.get(FINISH_DEF.key).getSourceImage();
     const scale = FINISH_DEF.targetH / tex.height;
     const dispW = tex.width*scale, dispH = FINISH_DEF.targetH;
     const startX = w + dispW/2 + 20; // enters from off-screen, same as any obstacle
     const restX = w - dispW/2 - 40;  // fixed resting spot, fully on screen near the right edge
-    const img = this.add.image(startX, this.groundY+46, FINISH_DEF.key).setOrigin(0.5,1).setDisplaySize(dispW,dispH);
+    const img = this.add.image(startX, this.groundY, FINISH_DEF.key).setOrigin(0.5,1).setDisplaySize(dispW,dispH);
     this.finish = { img, x: startX, restX, width: dispW, settled: false };
   }
 
@@ -561,35 +558,24 @@ class RunnerScene extends Phaser.Scene {
     }
     this.distText.setText(Math.floor(gameState.distance)+' m');
 
-    if(!this.arriving){
-      // "the camera stops": once arriving, we simply stop touching these — the last frame
-      // drawn stays on screen, so the road/skyline read as having come to a halt.
-      this.skylineOffset = (this.skylineOffset + gameState.speed*dt*0.12);
-      const totalW = this.buildings.reduce((a,b)=>Math.max(a,b.x+b.w),0);
-      if(this.skylineOffset > totalW) this.skylineOffset -= totalW;
-      this.drawSkyline();
-
-      this.groundOffset = (this.groundOffset + gameState.speed*dt) % 44;
-      this.groundGfx.clear();
-      // subtle depth shading: slightly lighter near the horizon line, darker toward the foreground
-      const roadTop = this.groundY+46, roadH = h-roadTop;
-      const rc1 = Phaser.Display.Color.ValueToColor(0x2a221c);
-      const rc2 = Phaser.Display.Color.ValueToColor(0x140b12);
-      const bands = 10;
-      for(let i=0;i<bands;i++){
-        const t = i/bands;
-        const c = Phaser.Display.Color.Interpolate.ColorWithColor(rc1, rc2, 1, t);
-        this.groundGfx.fillStyle(Phaser.Display.Color.GetColor(c.r,c.g,c.b),1);
-        this.groundGfx.fillRect(0, roadTop + roadH*t, w, roadH/bands + 1);
-      }
-      this.groundGfx.lineStyle(3,BRAND,0.4);
-      for(let x=-44+this.groundOffset; x<w; x+=44){
-        this.groundGfx.lineBetween(x, this.groundY+46, x+20, this.groundY+46);
-      }
-      this.groundGfx.lineStyle(3,0x5a3d2b,0.8);
-      this.groundGfx.lineBetween(0,this.groundY+46,w,this.groundY+46);
-      this.groundGfx.fillStyle(0xffffff,0.03);
-      this.groundGfx.fillRect(0,this.groundY+46,w,6);
+    // "the camera stops" once the parcel machine has settled into place — up to that point
+    // the background keeps scrolling (at the calmer arrival pace once arriving begins), so the
+    // machine sliding in reads as the camera still moving, not an object drifting over a static
+    // scene. After it settles, we simply stop touching these and the last frame drawn stays put.
+    if(!this.arriving || (this.finish && !this.finish.settled)){
+      const scrollSpeed = this.arriving ? ARRIVAL_SPEED : gameState.speed;
+      const bgDx = scrollSpeed*dt;
+      this.bgPanels.forEach(p=>{ p.x -= bgDx; });
+      this.bgPanels.forEach(p=>{
+        if(p.x + this.bgPanelW <= 0){
+          const rightmost = this.bgPanels.reduce((a,b)=> b.x > a.x ? b : a);
+          p.x = rightmost.x + this.bgPanelW;
+          p.key = this.pickBgKey(rightmost.key);
+          lastBackgroundKey = p.key;
+          p.img.setTexture(p.key);
+        }
+        p.img.x = p.x;
+      });
     }
 
     this.weatherGfx.clear();
@@ -620,8 +606,8 @@ class RunnerScene extends Phaser.Scene {
     if(gameState.isJumping){
       gameState.vy += GRAVITY*dt;
       this.playerContainer.y += gameState.vy*dt;
-      if(this.playerContainer.y >= this.groundY){
-        this.playerContainer.y = this.groundY;
+      if(this.playerContainer.y >= this.courierY){
+        this.playerContainer.y = this.courierY;
         gameState.isJumping = false;
         gameState.vy = 0;
       }
