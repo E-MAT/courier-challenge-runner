@@ -116,24 +116,41 @@
   #watermark{ position:absolute; bottom:10px; right:14px; z-index:6; opacity:0.55; pointer-events:none; }
   #watermark svg{ height:13px; width:auto; display:block; }
 
-  #rotate-overlay{
-    position:fixed; inset:0; z-index:9999;
-    display:none; flex-direction:column; align-items:center; justify-content:center;
-    background:
-      radial-gradient(120% 100% at 50% 0%, rgba(147,57,242,0.28), transparent 55%),
-      linear-gradient(180deg, rgba(21,12,38,0.98), rgba(20,11,34,0.99));
-    color:var(--paper); text-align:center; padding:24px;
+  #top-controls{
+    position:absolute; top:10px; right:10px; z-index:20;
+    display:flex; gap:6px;
   }
-  #rotate-overlay.visible{ display:flex; }
-  #rotate-overlay .icon{ width:56px; height:56px; margin-bottom:18px; animation:rotate-hint 1.8s ease-in-out infinite; }
-  #rotate-overlay h2{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:18px; margin:0 0 6px; color:var(--paper); }
-  #rotate-overlay p{ font-size:13px; line-height:1.4; color:#d9cce9; max-width:280px; margin:0; }
-  @keyframes rotate-hint{ 0%,100%{ transform:rotate(0deg); } 50%{ transform:rotate(-90deg); } }
+  .icon-btn{
+    width:32px; height:32px; border-radius:8px;
+    background:rgba(20,11,34,0.55);
+    border:1px solid rgba(243,233,214,0.2);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; padding:0;
+    touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+  }
+  .icon-btn svg{ width:16px; height:16px; display:block; pointer-events:none; }
+  .icon-btn:active{ background:rgba(147,57,242,0.35); }
+  /* fullscreen is a mobile/tablet nicety (pairs with the landscape-lock attempt) — desktop
+     users already have their own window controls, so skip cluttering the corner for them */
+  @media (pointer: fine){
+    #fullscreen-btn{ display:none; }
+  }
 </style>
 </head>
 <body>
 <div id="game-wrap">
   <div id="phaser-container"></div>
+  <div id="top-controls">
+    <button class="icon-btn" id="sound-btn" aria-label="Toggle sound">
+      <svg id="sound-on-icon" viewBox="0 0 24 24" fill="none"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="#f3e9d6"/><path d="M16.5 8.5a5 5 0 0 1 0 7" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round"/><path d="M19 6a9 9 0 0 1 0 12" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round" opacity="0.6"/></svg>
+      <svg id="sound-off-icon" viewBox="0 0 24 24" fill="none" style="display:none;"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="#f3e9d6"/><path d="M16 9l5 6M21 9l-5 6" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
+    <button class="icon-btn" id="fullscreen-btn" aria-label="Toggle fullscreen">
+      <svg id="fullscreen-enter-icon" viewBox="0 0 24 24" fill="none"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg id="fullscreen-exit-icon" viewBox="0 0 24 24" fill="none" style="display:none;"><path d="M9 4v5H4M15 4v5h5M20 20v-5h-5M4 20v-5h5" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+  <audio id="bgm" src="assets/sounds/music/background-music.mp3" loop preload="auto"></audio>
   <div id="start-overlay" class="overlay">
     <div class="brand-lockup">
       <svg width="99" height="19" viewBox="0 0 148 28" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -193,14 +210,6 @@
       <path d="M48.701 15.1178C48.701 9.85684 45.4006 6.6146 39.4152 6.43605C39.242 6.42966 39.0613 6.42718 38.8806 6.42718C38.3294 6.42718 37.7795 6.45628 37.2741 6.52586C32.1381 7.04659 28.9072 10.1674 28.9072 14.8345C28.9072 20.0248 33.7006 23.1002 39.2345 23.1002C41.6401 23.1002 43.9179 22.812 46.5308 20.8085C46.7722 20.6254 47.0189 20.4245 47.2666 20.2079L44.8082 16.1894C44.6349 16.3903 44.4415 16.6029 44.2242 16.8187C43.2864 17.7441 41.9109 18.6859 39.8695 18.6859C37.6688 18.6859 35.7083 17.37 35.4542 15.8039H48.7014V15.1178H48.701ZM35.4534 12.4999C35.6089 10.806 36.7796 10.0805 38.7841 10.0805C40.7736 10.0805 41.9709 11.0197 41.9709 12.4999H35.4534Z" fill="#F3E9D6"/>
     </svg>
   </div>
-</div>
-<div id="rotate-overlay">
-  <svg class="icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="6" y="2" width="12" height="20" rx="2.5" stroke="#f3e9d6" stroke-width="1.6"/>
-    <circle cx="12" cy="18.4" r="0.9" fill="#f3e9d6"/>
-  </svg>
-  <h2>Turn your device sideways</h2>
-  <p>This delivery run is easier with a wider view — rotate to landscape to keep playing.</p>
 </div>
 <script>
 const BRAND = 0x9339f2;
@@ -352,6 +361,7 @@ class RunnerScene extends Phaser.Scene {
     this.obstacles = [];
     this.spawnTimer = 0;
     this.spawnInterval = 1000;
+    this.lastObstacleKey = null;
 
     this.finish = null;
     this.finishTriggered = false;
@@ -481,9 +491,20 @@ class RunnerScene extends Phaser.Scene {
 
   spawnObstacle(){
     const w=this.scale.width;
-    const groundType = Math.random() < 0.55;
+    let def;
+    if(this.lastObstacleKey === 'obs_roadworks'){
+      // the road-works sign always leads into a manhole right after it
+      def = OBSTACLE_DEFS.ground.find(d => d.key === 'obs_manhole');
+    } else {
+      const pool = Math.random() < 0.55 ? OBSTACLE_DEFS.ground : OBSTACLE_DEFS.air;
+      do {
+        def = Phaser.Utils.Array.GetRandom(pool);
+      } while (pool.length > 1 && def.key === this.lastObstacleKey);
+    }
+    this.lastObstacleKey = def.key;
+    const groundType = OBSTACLE_DEFS.ground.includes(def);
     const type = groundType ? 'ground' : 'air';
-    const def = Phaser.Utils.Array.GetRandom(OBSTACLE_DEFS[type]);
+
     const tex = this.textures.get(def.key).getSourceImage();
     const scale = def.targetH / tex.height;
     const dispW = tex.width*scale, dispH = def.targetH;
@@ -707,62 +728,68 @@ const config = {
 
 let game = null;
 
-// Reliable baseline: no browser lets a page force-rotate the physical device, and iOS Safari
-// doesn't support the Orientation Lock API at all outside an installed home-screen PWA. So the
-// overlay below is the real fix — it covers the game and pauses it whenever a touch device is
-// held in portrait. tryLockLandscape() below is layered on top as a best-effort nicety for the
-// browsers (mainly Android Chrome, and only in fullscreen) that do support locking.
 function isTouchDevice(){
   return window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
 }
 
-(function(){
-  const overlay = document.getElementById('rotate-overlay');
-  const orientationMQ = window.matchMedia('(orientation: portrait)');
+// --- Sound toggle ---
+// The <audio> element lives outside Phaser entirely (rather than through Phaser's SoundManager)
+// so it keeps playing uninterrupted across restarts, since startGame() destroys and recreates
+// the whole Phaser.Game instance on every Retry/Play Again.
+const bgm = document.getElementById('bgm');
+bgm.volume = 0.55;
+let soundOn = localStorage.getItem('cc-sound-off') !== '1';
+function applySoundState(){
+  bgm.muted = !soundOn;
+  document.getElementById('sound-on-icon').style.display = soundOn ? '' : 'none';
+  document.getElementById('sound-off-icon').style.display = soundOn ? 'none' : '';
+}
+applySoundState();
+bindTap(document.getElementById('sound-btn'), function(){
+  soundOn = !soundOn;
+  localStorage.setItem('cc-sound-off', soundOn ? '0' : '1');
+  applySoundState();
+  if(soundOn && bgm.paused) bgm.play().catch(()=>{});
+});
 
-  function updateRotateOverlay(){
-    const shouldShow = orientationMQ.matches && isTouchDevice();
-    overlay.classList.toggle('visible', shouldShow);
-    if(game && game.scene.isActive('runner') && shouldShow){
-      game.scene.pause('runner');
-    } else if(game && game.scene.isPaused('runner') && !shouldShow){
-      game.scene.resume('runner');
-    }
-  }
-
-  orientationMQ.addEventListener('change', updateRotateOverlay);
-  window.addEventListener('resize', updateRotateOverlay);
-  window.addEventListener('orientationchange', updateRotateOverlay);
-  updateRotateOverlay();
-
-  window.updateRotateOverlay = updateRotateOverlay;
-})();
-
-async function tryLockLandscape(){
+// --- Fullscreen toggle ---
+// No browser lets a page force-rotate the physical device, and iOS Safari doesn't support the
+// Orientation Lock API at all outside an installed home-screen PWA — so this is a manual,
+// user-triggered control rather than something automatic: going fullscreen is also the required
+// context for screen.orientation.lock() to succeed on the browsers that do support it.
+function updateFullscreenIcon(){
+  const isFs = !!document.fullscreenElement;
+  document.getElementById('fullscreen-enter-icon').style.display = isFs ? 'none' : '';
+  document.getElementById('fullscreen-exit-icon').style.display = isFs ? '' : 'none';
+}
+document.addEventListener('fullscreenchange', updateFullscreenIcon);
+updateFullscreenIcon();
+bindTap(document.getElementById('fullscreen-btn'), async function(){
   try{
-    if(document.documentElement.requestFullscreen && !document.fullscreenElement){
+    if(document.fullscreenElement){
+      await document.exitFullscreen();
+    } else {
       await document.documentElement.requestFullscreen();
-    }
-    if(screen.orientation && screen.orientation.lock){
-      await screen.orientation.lock('landscape');
+      if(isTouchDevice() && screen.orientation && screen.orientation.lock){
+        try{ await screen.orientation.lock('landscape'); }catch(e){}
+      }
     }
   }catch(e){
-    // Unsupported or denied (iOS Safari, desktop, etc.) — the rotate overlay is the real fallback.
+    // Fullscreen unsupported or denied — no fallback needed, the game works windowed too.
   }
-}
+});
 
 function startGame(){
   if(typeof Phaser === 'undefined'){
     alert('The game engine could not load — check your internet connection and reload the page. If this keeps happening, try opening the page directly in Safari rather than a preview/share view.');
     return;
   }
-  if(isTouchDevice()) tryLockLandscape();
   document.getElementById('start-overlay').classList.add('hidden');
   document.getElementById('gameover-overlay').classList.add('hidden');
   document.getElementById('win-overlay').classList.add('hidden');
   if(game){ game.destroy(true); }
   game = new Phaser.Game(config);
-  window.updateRotateOverlay();
+  if(soundOn) bgm.play().catch(()=>{});
 }
 
 function goHome(){
