@@ -139,6 +139,31 @@
   @media (pointer: fine){
     #fullscreen-btn{ display:none; }
   }
+  /* The game stays a fixed 16:9 landscape card at all times — below 720px wide, its width always
+     equals the viewport width, so its height is exactly width*9/16 (e.g. ~202px at 360px wide).
+     Below that, menu content has to shrink to actually fit instead of just scrolling internally. */
+  @media (max-width: 480px){
+    .overlay{ padding:6px 14px; }
+    .brand-lockup{ margin-bottom:3px; }
+    .brand-lockup svg{ height:13px; }
+    .brand-lockup .pipe{ height:10px; }
+    .brand-lockup .tag{ font-size:8px; }
+    .overlay h1{ font-size:15px; margin:0 0 2px; }
+    .overlay p{ display:none; }
+    .howto{ margin:1px 0 5px; gap:2px; }
+    .howto-row{ font-size:8.5px; line-height:1.2; gap:6px; }
+    .howto-key{ width:15px; height:15px; font-size:8px; border-radius:4px; }
+    .stat-row{ gap:14px; margin-bottom:2px; }
+    .stat .num{ font-size:15px; }
+    .stat .lbl{ font-size:7px; }
+    .coupon{ padding:3px 12px; gap:0; border-radius:8px; }
+    .coupon .code{ font-size:14px; }
+    .coupon .sub{ font-size:7px; }
+    .copy-note{ font-size:7px; height:7px; margin-top:0; }
+    .btn{ font-size:11px; padding:5px 16px; border-radius:7px; box-shadow:0 2px 0 #4a2570; }
+    .btn.secondary{ font-size:9px; padding:3px 10px; }
+    .btn-stack{ gap:3px; margin-top:2px; }
+  }
 </style>
 </head>
 <body>
@@ -617,7 +642,8 @@ class RunnerScene extends Phaser.Scene {
 
     if(!this.arriving){
       this.spawnTimer += delta;
-      const interval = Math.max(480, this.spawnInterval - gameState.distance*0.35);
+      // *2 doubles the gap between obstacles at every point in the difficulty curve
+      const interval = Math.max(480, this.spawnInterval - gameState.distance*0.35) * 2;
       if(this.spawnTimer > interval && gameState.distance < LAST_OBSTACLE_DISTANCE){
         this.spawnTimer = 0;
         this.spawnObstacle();
