@@ -645,8 +645,9 @@ class RunnerScene extends Phaser.Scene {
 
     if(!this.arriving){
       this.spawnTimer += delta;
-      // *2 doubles the gap between obstacles at every point in the difficulty curve
-      const interval = Math.max(480, this.spawnInterval - gameState.distance*0.35) * 2;
+      // constant spacing throughout — this used to shrink toward a 480ms floor as distance grew,
+      // which bunched obstacles closer together later in a long run than at the start
+      const interval = this.spawnInterval * 2;
       if(this.spawnTimer > interval && gameState.distance < LAST_OBSTACLE_DISTANCE){
         this.spawnTimer = 0;
         this.spawnObstacle();
