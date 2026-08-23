@@ -172,7 +172,7 @@
   <div id="top-controls">
     <button class="icon-btn" id="fullscreen-btn" aria-label="Toggle fullscreen">
       <svg id="fullscreen-enter-icon" viewBox="0 0 24 24" fill="none"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <svg id="fullscreen-exit-icon" viewBox="0 0 24 24" fill="none" style="display:none;"><path d="M9 4v5H4M15 4v5h5M20 20v-5h-5M4 20v-5h5" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg id="fullscreen-exit-icon" viewBox="0 0 24 24" fill="none" style="display:none;"><path d="M9 4v5H4M15 4v5h5M15 20v-5h5M9 20v-5H4" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
   </div>
   <div id="start-overlay" class="overlay">
@@ -255,9 +255,10 @@ const LEVEL_DISTANCE = 3000;
 const ARRIVAL_SPEED = 150;
 // The widest obstacle (the hole, ~244px wide once scaled) needs about 460 "meters" of travel
 // between spawning off the right edge and clearing the left edge, at the constant 2-pixels-per-meter
-// scroll ratio the game uses. Stopping spawns here guarantees the road is clear before LEVEL_DISTANCE,
-// so no obstacle needs to be force-removed when the arrival sequence begins.
-const LAST_OBSTACLE_DISTANCE = 900;
+// scroll ratio the game uses. Stopping spawns 500m before LEVEL_DISTANCE (comfortably more than
+// that 460m) guarantees the road is clear before the arrival sequence begins, no matter how long
+// the level is — derived from LEVEL_DISTANCE rather than hardcoded so it keeps working if that changes.
+const LAST_OBSTACLE_DISTANCE = LEVEL_DISTANCE - 500;
 const DURABILITY_MAX = 100;
 // Measured directly from the background art (1536x1024 source): the purple brick band starts
 // at y=885 (character + ground obstacles stand on its top edge) and the light curb strip above
@@ -595,8 +596,10 @@ class RunnerScene extends Phaser.Scene {
     this._nowMs = time;
 
     if(!this.arriving){
+      // speed stays constant at the base value for the whole run — it used to ramp up to a
+      // cap of 560, but that ramp took ~2444m to finish regardless of level length, so a level
+      // this long would spend most of its distance still visibly accelerating
       gameState.distance += gameState.speed*dt*0.5;
-      gameState.speed = Math.min(560, 340 + gameState.distance*0.09);
     }
     this.distText.setText(Math.floor(gameState.distance)+' m');
 
@@ -654,8 +657,13 @@ class RunnerScene extends Phaser.Scene {
         o.x -= gameState.speed*dt;
         this.updateObstacleVisual(o, time);
 
+        // Checked every frame while inside the zone (not just once on first contact) — a
+        // one-shot check let the player clear an obstacle at the moment they first entered its
+        // zone, then keep descending/standing-up into it for the rest of the overlap without
+        // ever failing, which looked like "jumping into" it for free. o.hit now only locks once
+        // an actual hit lands, so a late mistake during the overlap still gets caught.
         const dx = Math.abs(o.x - this.playerX);
-        if(!o.hit && dx < o.width*0.42){
+        if(!o.hit && dx < o.width*0.5){
           let collided = false;
           if(o.type==='ground'){
             const clearance = this.groundY - this.playerContainer.y;
@@ -667,8 +675,6 @@ class RunnerScene extends Phaser.Scene {
           if(collided){
             o.hit = true;
             this.applyDamage(o.type);
-          } else {
-            o.hit = true;
           }
         }
 
