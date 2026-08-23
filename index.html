@@ -10,21 +10,12 @@
 <style>
   :root{
     --brand:#9339f2;
-    --brand-deep:#5b1fa6;
-    --brand-glow:#c79cf5;
-    --brand-ink:#1c1030;
-    --dusk-top:#150c26;
-    --dusk-mid:#3a1f5c;
-    --dusk-horizon:#c96a3e;
-    --asphalt:#2f2a28;
-    --asphalt-wet:#423a37;
-    --mustard:#d9a548;
-    --rust:#c96a3e;
-    --maroon:#7a2e2e;
-    --rain:#cfe0f5;
-    --cream:#f3e9d6;
-    --ink:#140b22;
-    --paper:#faf3e6;
+    --brand-deep:#643395;
+    --brand-pale:#ebe4fe;
+    --accent-lime:#e7f43b;
+    --ink:#2a1a40;
+    --muted:#7d6a9c;
+    --paper:#ffffff;
   }
   *{box-sizing:border-box;}
   html,body{
@@ -50,26 +41,39 @@
     display:flex; flex-direction:column; align-items:center; justify-content:center;
     text-align:center;
     background:
-      radial-gradient(120% 100% at 50% 0%, rgba(147,57,242,0.28), transparent 55%),
-      linear-gradient(180deg, rgba(21,12,38,0.94), rgba(20,11,34,0.97));
-    color:var(--paper);
+      radial-gradient(120% 100% at 50% 0%, rgba(255,255,255,0.7), transparent 60%),
+      var(--brand-pale);
+    color:var(--ink);
     padding:18px 24px;
     z-index:10;
     overflow-y:auto;
   }
   .overlay.hidden{display:none;}
+  .win-step.step-hidden{display:none;}
+  .win-step{ display:flex; flex-direction:column; align-items:center; }
   .brand-lockup{ display:flex; align-items:center; gap:10px; margin-bottom:10px; opacity:0.95; flex-shrink:0; }
   .brand-lockup svg{ height:18px; width:auto; }
-  .brand-lockup .pipe{ width:1px; height:14px; background:rgba(243,233,214,0.25); }
-  .brand-lockup .tag{ font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:#b9a9d6; }
+  .brand-lockup .pipe{ width:1px; height:14px; background:rgba(100,51,149,0.25); }
+  .brand-lockup .tag{ font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); }
   .overlay h1{
     font-family:'Space Grotesk',sans-serif;
     font-weight:700;
     font-size:26px; letter-spacing:-0.01em; margin:0 0 5px;
-    color:var(--paper);
+    color:var(--ink);
   }
-  .overlay h1 .accent{ color:var(--brand-glow); }
-  .overlay p{margin:2px 0 10px; font-size:13px; line-height:1.45; color:#d9cce9; max-width:360px;}
+  .overlay h1 .accent{
+    background:var(--accent-lime); color:var(--ink);
+    padding:0 6px; border-radius:5px;
+  }
+  .overlay p{margin:2px 0 10px; font-size:13px; line-height:1.45; color:var(--muted); max-width:360px;}
+  .howto{ margin:4px 0 14px; display:flex; flex-direction:column; gap:8px; max-width:360px; flex-shrink:0; }
+  .howto-row{ display:flex; align-items:center; gap:10px; text-align:left; font-size:12.5px; line-height:1.4; color:var(--ink); }
+  .howto-key{
+    flex-shrink:0; width:26px; height:26px; border-radius:7px;
+    background:var(--paper); color:var(--brand-deep);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px;
+  }
   .btn{
     font-family:'Space Grotesk',sans-serif;
     font-weight:700;
@@ -80,39 +84,39 @@
     padding:11px 28px;
     border-radius:10px;
     cursor:pointer;
-    box-shadow:0 4px 0 #431780, 0 8px 24px rgba(147,57,242,0.35);
+    box-shadow:0 4px 0 #4a2570, 0 8px 24px rgba(147,57,242,0.25);
     transition:transform 0.08s ease;
     touch-action:manipulation;
     -webkit-tap-highlight-color:transparent;
     -webkit-user-select:none;
     user-select:none;
   }
-  .btn:active{transform:translateY(3px); box-shadow:0 1px 0 #431780, 0 4px 12px rgba(147,57,242,0.3);}
+  .btn:active{transform:translateY(3px); box-shadow:0 1px 0 #4a2570, 0 4px 12px rgba(147,57,242,0.2);}
   .btn.secondary{
-    background:transparent; color:var(--paper); box-shadow:none;
-    border:1.5px solid rgba(243,233,214,0.25);
+    background:var(--paper); color:var(--brand-deep); box-shadow:none;
+    border:1.5px solid var(--brand-deep);
     font-size:12.5px; padding:8px 18px;
   }
   .btn-stack{ display:flex; flex-direction:column; align-items:center; gap:8px; margin-top:6px; flex-shrink:0; }
   .stat-row{display:flex; gap:26px; margin-bottom:8px; flex-shrink:0;}
   .stat{text-align:center;}
-  .stat .num{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:26px; color:var(--paper);}
-  .stat .lbl{font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:#b9a9d6;}
+  .stat .num{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:26px; color:var(--ink);}
+  .stat .lbl{font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted);}
   .coupon{
-    margin-top:2px; border:1.5px dashed var(--brand-glow); border-radius:12px;
-    padding:10px 22px; background:rgba(147,57,242,0.1);
+    margin-top:2px; border:1.5px dashed var(--brand); border-radius:12px;
+    padding:10px 22px; background:var(--paper);
     display:flex; flex-direction:column; align-items:center; gap:4px;
     position:relative; flex-shrink:0;
   }
   .coupon::before, .coupon::after{
     content:''; position:absolute; width:14px; height:14px; border-radius:50%;
-    background:var(--ink); top:50%; transform:translateY(-50%);
+    background:var(--brand-pale); top:50%; transform:translateY(-50%);
   }
   .coupon::before{ left:-7px; } .coupon::after{ right:-7px; }
-  .coupon .code{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:24px; letter-spacing:0.06em; color:var(--paper); }
-  .coupon .sub{font-size:10px; color:#c8b8e0; text-transform:uppercase; letter-spacing:0.06em;}
-  .copy-note{font-size:10.5px; color:#9a8bb8; margin-top:2px; height:12px;}
-  #hint{ position:absolute; bottom:8px; left:0; right:0; text-align:center; color:rgba(243,233,214,0.4); font-size:10.5px; letter-spacing:0.03em; z-index:5; pointer-events:none; }
+  .coupon .code{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:24px; letter-spacing:0.06em; color:var(--brand-deep); }
+  .coupon .sub{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em;}
+  .copy-note{font-size:10.5px; color:var(--muted); margin-top:2px; height:12px;}
+  #hint{ position:absolute; bottom:8px; left:0; right:0; text-align:center; color:rgba(122,106,153,0.6); font-size:10.5px; letter-spacing:0.03em; z-index:5; pointer-events:none; }
   #watermark{ position:absolute; bottom:10px; right:14px; z-index:6; opacity:0.55; pointer-events:none; }
   #watermark svg{ height:13px; width:auto; display:block; }
 
@@ -141,37 +145,35 @@
 <div id="game-wrap">
   <div id="phaser-container"></div>
   <div id="top-controls">
-    <button class="icon-btn" id="sound-btn" aria-label="Toggle sound">
-      <svg id="sound-on-icon" viewBox="0 0 24 24" fill="none"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="#f3e9d6"/><path d="M16.5 8.5a5 5 0 0 1 0 7" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round"/><path d="M19 6a9 9 0 0 1 0 12" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round" opacity="0.6"/></svg>
-      <svg id="sound-off-icon" viewBox="0 0 24 24" fill="none" style="display:none;"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="#f3e9d6"/><path d="M16 9l5 6M21 9l-5 6" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round"/></svg>
-    </button>
     <button class="icon-btn" id="fullscreen-btn" aria-label="Toggle fullscreen">
       <svg id="fullscreen-enter-icon" viewBox="0 0 24 24" fill="none"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <svg id="fullscreen-exit-icon" viewBox="0 0 24 24" fill="none" style="display:none;"><path d="M9 4v5H4M15 4v5h5M20 20v-5h-5M4 20v-5h5" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
   </div>
-  <audio id="bgm" src="assets/sounds/music/background-music.mp3" loop preload="auto"></audio>
   <div id="start-overlay" class="overlay">
     <div class="brand-lockup">
       <svg width="99" height="19" viewBox="0 0 148 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M70.3361 14.1505V22.8649H63.3837V15.1593C63.3837 12.736 62.5343 11.6327 60.6143 11.6327C58.6311 11.6327 57.5932 12.8627 57.5932 15.2519V22.8652H50.6739V7.13498H55.615L57.4062 10.3442C58.6311 7.92087 60.8028 6.66217 63.7607 6.66217C68.0721 6.66217 70.3361 9.24347 70.3361 14.1505Z" fill="#F3E9D6"/>
-        <path d="M73.1616 0.105644H80.2719V5.1834H73.1616V0.105644ZM73.2567 7.13393H80.1789V22.8663H73.2567V7.13393Z" fill="#F3E9D6"/>
-        <path d="M96.1898 6.66287C93.6391 6.66287 91.4422 7.60708 90.1199 9.49051V9.50187L90.116 9.49442L88.7977 7.13568H83.3849V27.9433H90.3042V20.948C91.7517 22.522 93.5123 23.3369 95.9683 23.3369C100.687 23.3369 103.866 20.0365 103.866 14.8739C103.867 9.93812 100.813 6.66287 96.1898 6.66287ZM93.4836 18.995C91.4674 18.995 90.1792 17.5187 90.1792 15.2509V14.6858C90.1792 12.2638 91.4042 10.9721 93.4506 10.9721C95.5285 10.9721 96.6928 12.3892 96.6928 14.8743C96.6932 17.4225 95.4959 18.995 93.4836 18.995Z" fill="#F3E9D6"/>
-        <path d="M115.063 6.65542C109.519 6.65542 105.779 8.80047 105.343 12.5105H112.381C112.537 11.2856 113.456 10.6207 115.021 10.6207C116.472 10.6207 117.362 11.1997 117.362 12.4257V13.016L111.79 13.5559C109.235 13.8367 107.6 14.3017 106.529 15.0918C105.43 15.882 104.894 17.0118 104.894 18.4935C104.894 21.483 107.319 23.3298 111.352 23.3298C114.36 23.3298 116.805 22.2149 117.662 20.4351V20.4199L117.666 20.4273C117.67 20.4234 117.67 20.4159 117.673 20.412V20.4422L119.025 22.8641H124.345V13.5268C124.344 8.87004 121.538 6.65542 115.063 6.65542ZM117.517 16.9274C117.517 18.4381 116.162 19.4643 114.146 19.4643C112.791 19.4643 111.946 18.8726 111.946 17.9284C111.946 17.0118 112.736 16.4773 114.498 16.2221L117.517 15.882V16.9274Z" fill="#F3E9D6"/>
-        <path d="M136.349 16.7371L133.854 18.9961V22.8666H126.933V0.0566559H133.854V12.6415L139.172 7.13393H147.478L141.729 12.6263L147.605 22.8666H139.958L136.349 16.7371Z" fill="#F3E9D6"/>
-        <path d="M26.8029 0.10601V22.8667H13.8045L0.649536 0.10601H8.44738L19.7672 19.8164V0.10601H26.8029Z" fill="#F3E9D6"/>
-        <path d="M48.701 15.1178C48.701 9.85684 45.4006 6.6146 39.4152 6.43605C39.242 6.42966 39.0613 6.42718 38.8806 6.42718C38.3294 6.42718 37.7795 6.45628 37.2741 6.52586C32.1381 7.04659 28.9072 10.1674 28.9072 14.8345C28.9072 20.0248 33.7006 23.1002 39.2345 23.1002C41.6401 23.1002 43.9179 22.812 46.5308 20.8085C46.7722 20.6254 47.0189 20.4245 47.2666 20.2079L44.8082 16.1894C44.6349 16.3903 44.4415 16.6029 44.2242 16.8187C43.2864 17.7441 41.9109 18.6859 39.8695 18.6859C37.6688 18.6859 35.7083 17.37 35.4542 15.8039H48.7014V15.1178H48.701ZM35.4534 12.4999C35.6089 10.806 36.7796 10.0805 38.7841 10.0805C40.7736 10.0805 41.9709 11.0197 41.9709 12.4999H35.4534Z" fill="#F3E9D6"/>
+        <path d="M70.3361 14.1505V22.8649H63.3837V15.1593C63.3837 12.736 62.5343 11.6327 60.6143 11.6327C58.6311 11.6327 57.5932 12.8627 57.5932 15.2519V22.8652H50.6739V7.13498H55.615L57.4062 10.3442C58.6311 7.92087 60.8028 6.66217 63.7607 6.66217C68.0721 6.66217 70.3361 9.24347 70.3361 14.1505Z" fill="#643395"/>
+        <path d="M73.1616 0.105644H80.2719V5.1834H73.1616V0.105644ZM73.2567 7.13393H80.1789V22.8663H73.2567V7.13393Z" fill="#643395"/>
+        <path d="M96.1898 6.66287C93.6391 6.66287 91.4422 7.60708 90.1199 9.49051V9.50187L90.116 9.49442L88.7977 7.13568H83.3849V27.9433H90.3042V20.948C91.7517 22.522 93.5123 23.3369 95.9683 23.3369C100.687 23.3369 103.866 20.0365 103.866 14.8739C103.867 9.93812 100.813 6.66287 96.1898 6.66287ZM93.4836 18.995C91.4674 18.995 90.1792 17.5187 90.1792 15.2509V14.6858C90.1792 12.2638 91.4042 10.9721 93.4506 10.9721C95.5285 10.9721 96.6928 12.3892 96.6928 14.8743C96.6932 17.4225 95.4959 18.995 93.4836 18.995Z" fill="#643395"/>
+        <path d="M115.063 6.65542C109.519 6.65542 105.779 8.80047 105.343 12.5105H112.381C112.537 11.2856 113.456 10.6207 115.021 10.6207C116.472 10.6207 117.362 11.1997 117.362 12.4257V13.016L111.79 13.5559C109.235 13.8367 107.6 14.3017 106.529 15.0918C105.43 15.882 104.894 17.0118 104.894 18.4935C104.894 21.483 107.319 23.3298 111.352 23.3298C114.36 23.3298 116.805 22.2149 117.662 20.4351V20.4199L117.666 20.4273C117.67 20.4234 117.67 20.4159 117.673 20.412V20.4422L119.025 22.8641H124.345V13.5268C124.344 8.87004 121.538 6.65542 115.063 6.65542ZM117.517 16.9274C117.517 18.4381 116.162 19.4643 114.146 19.4643C112.791 19.4643 111.946 18.8726 111.946 17.9284C111.946 17.0118 112.736 16.4773 114.498 16.2221L117.517 15.882V16.9274Z" fill="#643395"/>
+        <path d="M136.349 16.7371L133.854 18.9961V22.8666H126.933V0.0566559H133.854V12.6415L139.172 7.13393H147.478L141.729 12.6263L147.605 22.8666H139.958L136.349 16.7371Z" fill="#643395"/>
+        <path d="M26.8029 0.10601V22.8667H13.8045L0.649536 0.10601H8.44738L19.7672 19.8164V0.10601H26.8029Z" fill="#643395"/>
+        <path d="M48.701 15.1178C48.701 9.85684 45.4006 6.6146 39.4152 6.43605C39.242 6.42966 39.0613 6.42718 38.8806 6.42718C38.3294 6.42718 37.7795 6.45628 37.2741 6.52586C32.1381 7.04659 28.9072 10.1674 28.9072 14.8345C28.9072 20.0248 33.7006 23.1002 39.2345 23.1002C41.6401 23.1002 43.9179 22.812 46.5308 20.8085C46.7722 20.6254 47.0189 20.4245 47.2666 20.2079L44.8082 16.1894C44.6349 16.3903 44.4415 16.6029 44.2242 16.8187C43.2864 17.7441 41.9109 18.6859 39.8695 18.6859C37.6688 18.6859 35.7083 17.37 35.4542 15.8039H48.7014V15.1178H48.701ZM35.4534 12.4999C35.6089 10.806 36.7796 10.0805 38.7841 10.0805C40.7736 10.0805 41.9709 11.0197 41.9709 12.4999H35.4534Z" fill="#643395"/>
       </svg>
       <div class="pipe"></div>
       <div class="tag">Courier Challenge</div>
     </div>
     <h1>Keep it <span class="accent">FRAGILE</span>-safe</h1>
-    <p>Autumn's rough on deliveries. Jump the potholes and puddles, duck the wind-blown branches, and get the box through the storm in one piece.</p>
+    <div class="howto">
+      <div class="howto-row"><span class="howto-key">&uarr;</span><span>Jump potholes, manholes, leaves &amp; scooters — <b>Space / &uarr;</b> or tap the top half</span></div>
+      <div class="howto-row"><span class="howto-key">&darr;</span><span>Duck under road signs — <b>&darr;</b> or tap the bottom half</span></div>
+      <div class="howto-row"><span class="howto-key">&bull;</span><span>Every hit lowers package condition — reach the parcel machine before it runs out</span></div>
+    </div>
     <button class="btn" id="start-btn">START DELIVERY</button>
-    <div style="margin-top:10px; font-size:11px; color:#9a8bb8;">SPACE / &uarr; to jump &middot; &darr; to duck &middot; tap top/bottom on mobile</div>
   </div>
   <div id="gameover-overlay" class="overlay hidden">
-    <h1 style="color:#e07a7a">Package damaged</h1>
+    <h1 style="color:#c94f4f">Package damaged</h1>
     <p>The box didn't make it this time. Give it another go.</p>
     <div class="stat-row"><div class="stat"><div class="num" id="go-distance">0m</div><div class="lbl">Distance</div></div></div>
     <div class="btn-stack">
@@ -180,22 +182,30 @@
     </div>
   </div>
   <div id="win-overlay" class="overlay hidden">
-    <h1>Delivered <span class="accent">safely</span></h1>
-    <p>Nice hands. The package arrived intact — here's something for the road.</p>
-    <div class="stat-row">
-      <div class="stat"><div class="num" id="win-distance">0m</div><div class="lbl">Distance</div></div>
-      <div class="stat"><div class="num" id="win-condition">100%</div><div class="lbl">Condition</div></div>
+    <div id="win-step-1" class="win-step">
+      <h1>Delivered <span class="accent">safely</span></h1>
+      <p>Nice hands. The package arrived intact — here's something for the road.</p>
+      <div class="stat-row">
+        <div class="stat"><div class="num" id="win-distance">0m</div><div class="lbl">Distance</div></div>
+        <div class="stat"><div class="num" id="win-condition">100%</div><div class="lbl">Condition</div></div>
+      </div>
+      <div class="coupon">
+        <div class="sub">Your reward</div>
+        <div class="code" id="coupon-code">FAST15</div>
+        <div class="sub">-15% off shipping</div>
+      </div>
+      <div class="copy-note" id="copy-note"></div>
+      <div class="btn-stack">
+        <button class="btn" id="copy-btn">COPY CODE</button>
+        <button class="btn secondary" id="win-next-btn">NEXT</button>
+      </div>
     </div>
-    <div class="coupon">
-      <div class="sub">Your reward</div>
-      <div class="code" id="coupon-code">FAST15</div>
-      <div class="sub">-15% off shipping</div>
-    </div>
-    <div class="copy-note" id="copy-note"></div>
-    <div class="btn-stack">
-      <button class="btn" id="copy-btn">COPY CODE</button>
-      <button class="btn secondary" id="play-again-btn">PLAY AGAIN</button>
-      <button class="btn secondary" id="home-btn-win">BACK TO HOME</button>
+    <div id="win-step-2" class="win-step step-hidden">
+      <h1>Play <span class="accent">again?</span></h1>
+      <div class="btn-stack">
+        <button class="btn" id="play-again-btn">PLAY AGAIN</button>
+        <button class="btn secondary" id="home-btn-win">BACK TO HOME</button>
+      </div>
     </div>
   </div>
   <div id="hint"></div>
@@ -329,17 +339,6 @@ class RunnerScene extends Phaser.Scene {
       px += this.bgPanelW;
     }
 
-    this.leaves = [];
-    for(let i=0;i<18;i++){
-      this.leaves.push({
-        x: Phaser.Math.Between(0,w), y: Phaser.Math.Between(0,h*0.65),
-        r: Phaser.Math.Between(3,6), speed: Phaser.Math.Between(50,120),
-        drift: Phaser.Math.Between(-70,-20), spin: Phaser.Math.FloatBetween(0.5,2),
-        color: Phaser.Utils.Array.GetRandom([0xd9a548,0xc96a3e,0x8a3b2b,0xb5822f])
-      });
-    }
-    this.weatherGfx = this.add.graphics();
-
     this.rain = [];
     for(let i=0;i<70;i++){
       this.rain.push({
@@ -348,9 +347,6 @@ class RunnerScene extends Phaser.Scene {
       });
     }
     this.rainGfx = this.add.graphics();
-
-    this.nextFlash = Phaser.Math.Between(3500,7000);
-    this.flashTimer = 0;
 
     this.playerX = w*0.22;
     this.playerContainer = this.add.container(this.playerX, this.courierY);
@@ -599,15 +595,6 @@ class RunnerScene extends Phaser.Scene {
       });
     }
 
-    this.weatherGfx.clear();
-    this.leaves.forEach(lf=>{
-      lf.x += lf.drift*dt*6;
-      lf.y += Math.sin(time/500+lf.x)*0.3 + 18*dt;
-      if(lf.x < -10 || lf.y > h){ lf.x = w+10; lf.y = Phaser.Math.Between(0,h*0.5); }
-      this.weatherGfx.fillStyle(lf.color,0.85);
-      this.weatherGfx.fillCircle(lf.x,lf.y,lf.r);
-    });
-
     this.rainGfx.clear();
     this.rainGfx.lineStyle(2, 0xcfe0f5, 0.35);
     this.rain.forEach(r=>{
@@ -616,13 +603,6 @@ class RunnerScene extends Phaser.Scene {
       if(r.y > h){ r.y = -20; r.x = Phaser.Math.Between(0,w); }
       this.rainGfx.lineBetween(r.x, r.y, r.x-8, r.y+r.len);
     });
-
-    this.flashTimer += delta;
-    if(this.flashTimer > this.nextFlash){
-      this.flashTimer = 0;
-      this.nextFlash = Phaser.Math.Between(4500,9000);
-      this.cameras.main.flash(180, 199, 156, 245, false);
-    }
 
     if(gameState.isJumping){
       gameState.vy += GRAVITY*dt;
@@ -707,6 +687,8 @@ class RunnerScene extends Phaser.Scene {
       if(won){
         document.getElementById('win-distance').textContent = Math.floor(gameState.distance)+'m';
         document.getElementById('win-condition').textContent = Math.round(gameState.durability)+'%';
+        document.getElementById('win-step-1').classList.remove('step-hidden');
+        document.getElementById('win-step-2').classList.add('step-hidden');
         document.getElementById('win-overlay').classList.remove('hidden');
       } else {
         document.getElementById('go-distance').textContent = Math.floor(gameState.distance)+'m';
@@ -731,26 +713,6 @@ let game = null;
 function isTouchDevice(){
   return window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
 }
-
-// --- Sound toggle ---
-// The <audio> element lives outside Phaser entirely (rather than through Phaser's SoundManager)
-// so it keeps playing uninterrupted across restarts, since startGame() destroys and recreates
-// the whole Phaser.Game instance on every Retry/Play Again.
-const bgm = document.getElementById('bgm');
-bgm.volume = 0.55;
-let soundOn = localStorage.getItem('cc-sound-off') !== '1';
-function applySoundState(){
-  bgm.muted = !soundOn;
-  document.getElementById('sound-on-icon').style.display = soundOn ? '' : 'none';
-  document.getElementById('sound-off-icon').style.display = soundOn ? 'none' : '';
-}
-applySoundState();
-bindTap(document.getElementById('sound-btn'), function(){
-  soundOn = !soundOn;
-  localStorage.setItem('cc-sound-off', soundOn ? '0' : '1');
-  applySoundState();
-  if(soundOn && bgm.paused) bgm.play().catch(()=>{});
-});
 
 // --- Fullscreen toggle ---
 // No browser lets a page force-rotate the physical device, and iOS Safari doesn't support the
@@ -789,7 +751,6 @@ function startGame(){
   document.getElementById('win-overlay').classList.add('hidden');
   if(game){ game.destroy(true); }
   game = new Phaser.Game(config);
-  if(soundOn) bgm.play().catch(()=>{});
 }
 
 function goHome(){
@@ -822,6 +783,10 @@ bindTap(document.getElementById('retry-btn'), startGame);
 bindTap(document.getElementById('play-again-btn'), startGame);
 bindTap(document.getElementById('home-btn-go'), goHome);
 bindTap(document.getElementById('home-btn-win'), goHome);
+bindTap(document.getElementById('win-next-btn'), function(){
+  document.getElementById('win-step-1').classList.add('step-hidden');
+  document.getElementById('win-step-2').classList.remove('step-hidden');
+});
 
 bindTap(document.getElementById('copy-btn'), function(){
   const code = document.getElementById('coupon-code').textContent;
