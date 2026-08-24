@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Venipak — Courier Challenge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
+<style>
+  :root{
+    --brand:#9339f2;
+    --brand-deep:#643395;
+    --brand-pale:#ebe4fe;
+    --accent-lime:#e7f43b;
+    --ink:#2a1a40;
+    --muted:#7d6a9c;
+    --paper:#ffffff;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;height:100%;
+    background:var(--ink);
+    font-family:'Inter',sans-serif;
+    display:flex;align-items:center;justify-content:center;
+    overflow:hidden;
+  }
+  #game-wrap{
+    position:relative;
+    width:min(100vw, 720px);
+    aspect-ratio: 16/9;
+    max-height:100vh;
+    box-shadow:0 24px 70px rgba(0,0,0,0.65), 0 0 0 1px rgba(147,57,242,0.15);
+    border-radius:16px;
+    overflow:hidden;
+  }
+  /* EXPERIMENT (index2): on portrait phones, grow the card to 4:3 instead of staying 16:9.
+     Width is untouched — only height grows — so the horizontal sightline obstacles are timed
+     against never changes; this just shows more sky/headroom above the same gameplay. The
+     Phaser config below picks a matching taller logical resolution (720x540) so that extra
+     height is real canvas, not letterbox bars. */
+  @media (orientation: portrait){
+    #game-wrap{ aspect-ratio: 4/3; }
+  }
+  /* Below 1200px this stays capped at 720px as before. From 1200px up, let the card grow with
+     the viewport (up to a 1200px ceiling so it doesn't get absurd on ultrawide monitors) instead
+     of staying pinned to the same fixed size regardless of how much room is available. */
+  @media (min-width: 1200px){
+    #game-wrap{
+      width:min(75vw, 1200px);
+    }
+  }
+  #game-wrap canvas{ display:block; width:100% !important; height:100% !important; }
+  .display{font-family:'Space Grotesk',sans-serif;}
+  .overlay{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center;
+    background:
+      radial-gradient(120% 100% at 50% 0%, rgba(255,255,255,0.7), transparent 60%),
+      var(--brand-pale);
+    color:var(--ink);
+    padding:18px 24px;
+    z-index:10;
+    overflow-y:auto;
+  }
+  .overlay.hidden{display:none;}
+  .win-step.step-hidden{display:none;}
+  .win-step{ display:flex; flex-direction:column; align-items:center; }
+  .brand-lockup{ display:flex; align-items:center; gap:10px; margin-bottom:10px; opacity:0.95; flex-shrink:0; }
+  .brand-lockup svg{ height:18px; width:auto; }
+  .brand-lockup .pipe{ width:1px; height:14px; background:rgba(100,51,149,0.25); }
+  .brand-lockup .tag{ font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); }
+  .overlay h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;
+    font-size:26px; letter-spacing:-0.01em; margin:0 0 5px;
+    color:var(--ink);
+  }
+  .overlay h1 .accent{
+    background:var(--accent-lime); color:var(--ink);
+    padding:0 6px; border-radius:5px;
+  }
+  .overlay p{margin:2px 0 10px; font-size:13px; line-height:1.45; color:var(--muted); max-width:360px;}
+  .howto{ margin:4px 0 14px; display:flex; flex-direction:column; gap:8px; max-width:360px; flex-shrink:0; }
+  .howto-row{ display:flex; align-items:center; gap:10px; text-align:left; font-size:12.5px; line-height:1.4; color:var(--ink); }
+  .howto-key{
+    flex-shrink:0; width:26px; height:26px; border-radius:7px;
+    background:var(--paper); color:var(--brand-deep);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px;
+  }
+  .btn{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;
+    font-size:15px; letter-spacing:0.01em;
+    background:linear-gradient(180deg, var(--brand), var(--brand-deep));
+    color:#fff;
+    border:none;
+    padding:11px 28px;
+    border-radius:10px;
+    cursor:pointer;
+    box-shadow:0 4px 0 #4a2570, 0 8px 24px rgba(147,57,242,0.25);
+    transition:transform 0.08s ease;
+    touch-action:manipulation;
+    -webkit-tap-highlight-color:transparent;
+    -webkit-user-select:none;
+    user-select:none;
+  }
+  .btn:active{transform:translateY(3px); box-shadow:0 1px 0 #4a2570, 0 4px 12px rgba(147,57,242,0.2);}
+  .btn.secondary{
+    background:var(--paper); color:var(--brand-deep); box-shadow:none;
+    border:1.5px solid var(--brand-deep);
+    font-size:12.5px; padding:8px 18px;
+  }
+  .btn-stack{ display:flex; flex-direction:column; align-items:center; gap:8px; margin-top:6px; flex-shrink:0; }
+  .stat-row{display:flex; gap:26px; margin-bottom:8px; flex-shrink:0;}
+  .stat{text-align:center;}
+  .stat .num{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:26px; color:var(--ink);}
+  .stat .lbl{font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted);}
+  .coupon{
+    margin-top:2px; border:1.5px dashed var(--brand); border-radius:12px;
+    padding:10px 22px; background:var(--paper);
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    position:relative; flex-shrink:0;
+  }
+  .coupon::before, .coupon::after{
+    content:''; position:absolute; width:14px; height:14px; border-radius:50%;
+    background:var(--brand-pale); top:50%; transform:translateY(-50%);
+  }
+  .coupon::before{ left:-7px; } .coupon::after{ right:-7px; }
+  .coupon .code{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:24px; letter-spacing:0.06em; color:var(--brand-deep); }
+  .coupon .sub{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em;}
+  .copy-note{font-size:10.5px; color:var(--muted); margin-top:2px; height:12px;}
+  #hint{ position:absolute; bottom:8px; left:0; right:0; text-align:center; color:rgba(122,106,153,0.6); font-size:10.5px; letter-spacing:0.03em; z-index:5; pointer-events:none; }
+  #watermark{ position:absolute; bottom:10px; right:14px; z-index:6; opacity:0.55; pointer-events:none; }
+  #watermark svg{ height:13px; width:auto; display:block; }
+
+  #top-controls{
+    position:absolute; top:10px; right:10px; z-index:20;
+    display:flex; gap:6px;
+  }
+  .icon-btn{
+    width:32px; height:32px; border-radius:8px;
+    background:rgba(20,11,34,0.55);
+    border:1px solid rgba(243,233,214,0.2);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; padding:0;
+    touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+  }
+  .icon-btn svg{ width:16px; height:16px; display:block; pointer-events:none; }
+  .icon-btn:active{ background:rgba(147,57,242,0.35); }
+  /* fullscreen is a mobile/tablet nicety (pairs with the landscape-lock attempt) — desktop
+     users already have their own window controls, so skip cluttering the corner for them */
+  @media (pointer: fine){
+    #fullscreen-btn{ display:none; }
+  }
+  /* The game stays a fixed 16:9 landscape card at all times — below 720px wide, its width always
+     equals the viewport width, so its height is exactly width*9/16 (e.g. ~202px at 360px wide).
+     Below that, menu content has to shrink to actually fit instead of just scrolling internally. */
+  @media (max-width: 480px){
+    .overlay{ padding:6px 14px; }
+    .brand-lockup{ margin-bottom:3px; }
+    .brand-lockup svg{ height:13px; }
+    .brand-lockup .pipe{ height:10px; }
+    .brand-lockup .tag{ font-size:8px; }
+    .overlay h1{ font-size:15px; margin:0 0 2px; }
+    .overlay p{ display:none; }
+    .howto{ margin:1px 0 5px; gap:2px; }
+    .howto-row{ font-size:8.5px; line-height:1.2; gap:6px; }
+    .howto-key{ width:15px; height:15px; font-size:8px; border-radius:4px; }
+    .stat-row{ gap:14px; margin-bottom:2px; }
+    .stat .num{ font-size:15px; }
+    .stat .lbl{ font-size:7px; }
+    .coupon{ padding:3px 12px; gap:0; border-radius:8px; }
+    .coupon .code{ font-size:14px; }
+    .coupon .sub{ font-size:7px; }
+    .copy-note{ font-size:7px; height:7px; margin-top:0; }
+    .btn{ font-size:11px; padding:5px 16px; border-radius:7px; box-shadow:0 2px 0 #4a2570; }
+    .btn.secondary{ font-size:9px; padding:3px 10px; }
+    .btn-stack{ gap:3px; margin-top:2px; }
+  }
+  /* The card itself already grows past 1200px wide (see #game-wrap above); scale the menu
+     content up to match so it fills the extra room instead of sitting small in the middle
+     of a much bigger card. */
+  @media (min-width: 1200px){
+    .overlay{ padding:26px 34px; }
+    .brand-lockup{ margin-bottom:14px; gap:14px; }
+    .brand-lockup svg{ height:25px; }
+    .brand-lockup .pipe{ height:20px; }
+    .brand-lockup .tag{ font-size:14px; }
+    .overlay h1{ font-size:38px; margin:0 0 8px; }
+    .overlay p{ font-size:17px; max-width:480px; margin:2px 0 14px; }
+    .howto{ max-width:480px; gap:12px; margin:6px 0 20px; }
+    .howto-row{ font-size:16px; gap:14px; }
+    .howto-key{ width:34px; height:34px; font-size:16px; border-radius:9px; }
+    .stat-row{ gap:34px; margin-bottom:11px; }
+    .stat .num{ font-size:34px; }
+    .stat .lbl{ font-size:13px; }
+    .coupon{ padding:14px 30px; border-radius:15px; gap:6px; }
+    .coupon::before, .coupon::after{ width:18px; height:18px; }
+    .coupon::before{ left:-9px; } .coupon::after{ right:-9px; }
+    .coupon .code{ font-size:32px; }
+    .coupon .sub{ font-size:13px; }
+    .copy-note{ font-size:13px; height:15px; }
+    .btn{ font-size:19px; padding:15px 38px; border-radius:13px; }
+    .btn.secondary{ font-size:15px; padding:11px 24px; }
+    .btn-stack{ gap:11px; margin-top:9px; }
+  }
+</style>
+</head>
+<body>
+<div id="game-wrap">
+  <div id="phaser-container"></div>
+  <div id="top-controls">
+    <button class="icon-btn" id="fullscreen-btn" aria-label="Toggle fullscreen">
+      <svg id="fullscreen-enter-icon" viewBox="0 0 24 24" fill="none"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <svg id="fullscreen-exit-icon" viewBox="0 0 24 24" fill="none" style="display:none;"><path d="M9 4v5H4M15 4v5h5M15 20v-5h5M9 20v-5H4" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+  <div id="start-overlay" class="overlay">
+    <div class="brand-lockup">
+      <svg width="99" height="19" viewBox="0 0 148 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M70.3361 14.1505V22.8649H63.3837V15.1593C63.3837 12.736 62.5343 11.6327 60.6143 11.6327C58.6311 11.6327 57.5932 12.8627 57.5932 15.2519V22.8652H50.6739V7.13498H55.615L57.4062 10.3442C58.6311 7.92087 60.8028 6.66217 63.7607 6.66217C68.0721 6.66217 70.3361 9.24347 70.3361 14.1505Z" fill="#643395"/>
+        <path d="M73.1616 0.105644H80.2719V5.1834H73.1616V0.105644ZM73.2567 7.13393H80.1789V22.8663H73.2567V7.13393Z" fill="#643395"/>
+        <path d="M96.1898 6.66287C93.6391 6.66287 91.4422 7.60708 90.1199 9.49051V9.50187L90.116 9.49442L88.7977 7.13568H83.3849V27.9433H90.3042V20.948C91.7517 22.522 93.5123 23.3369 95.9683 23.3369C100.687 23.3369 103.866 20.0365 103.866 14.8739C103.867 9.93812 100.813 6.66287 96.1898 6.66287ZM93.4836 18.995C91.4674 18.995 90.1792 17.5187 90.1792 15.2509V14.6858C90.1792 12.2638 91.4042 10.9721 93.4506 10.9721C95.5285 10.9721 96.6928 12.3892 96.6928 14.8743C96.6932 17.4225 95.4959 18.995 93.4836 18.995Z" fill="#643395"/>
+        <path d="M115.063 6.65542C109.519 6.65542 105.779 8.80047 105.343 12.5105H112.381C112.537 11.2856 113.456 10.6207 115.021 10.6207C116.472 10.6207 117.362 11.1997 117.362 12.4257V13.016L111.79 13.5559C109.235 13.8367 107.6 14.3017 106.529 15.0918C105.43 15.882 104.894 17.0118 104.894 18.4935C104.894 21.483 107.319 23.3298 111.352 23.3298C114.36 23.3298 116.805 22.2149 117.662 20.4351V20.4199L117.666 20.4273C117.67 20.4234 117.67 20.4159 117.673 20.412V20.4422L119.025 22.8641H124.345V13.5268C124.344 8.87004 121.538 6.65542 115.063 6.65542ZM117.517 16.9274C117.517 18.4381 116.162 19.4643 114.146 19.4643C112.791 19.4643 111.946 18.8726 111.946 17.9284C111.946 17.0118 112.736 16.4773 114.498 16.2221L117.517 15.882V16.9274Z" fill="#643395"/>
+        <path d="M136.349 16.7371L133.854 18.9961V22.8666H126.933V0.0566559H133.854V12.6415L139.172 7.13393H147.478L141.729 12.6263L147.605 22.8666H139.958L136.349 16.7371Z" fill="#643395"/>
+        <path d="M26.8029 0.10601V22.8667H13.8045L0.649536 0.10601H8.44738L19.7672 19.8164V0.10601H26.8029Z" fill="#643395"/>
+        <path d="M48.701 15.1178C48.701 9.85684 45.4006 6.6146 39.4152 6.43605C39.242 6.42966 39.0613 6.42718 38.8806 6.42718C38.3294 6.42718 37.7795 6.45628 37.2741 6.52586C32.1381 7.04659 28.9072 10.1674 28.9072 14.8345C28.9072 20.0248 33.7006 23.1002 39.2345 23.1002C41.6401 23.1002 43.9179 22.812 46.5308 20.8085C46.7722 20.6254 47.0189 20.4245 47.2666 20.2079L44.8082 16.1894C44.6349 16.3903 44.4415 16.6029 44.2242 16.8187C43.2864 17.7441 41.9109 18.6859 39.8695 18.6859C37.6688 18.6859 35.7083 17.37 35.4542 15.8039H48.7014V15.1178H48.701ZM35.4534 12.4999C35.6089 10.806 36.7796 10.0805 38.7841 10.0805C40.7736 10.0805 41.9709 11.0197 41.9709 12.4999H35.4534Z" fill="#643395"/>
+      </svg>
+      <div class="pipe"></div>
+      <div class="tag">Courier Challenge</div>
+    </div>
+    <h1>Keep it <span class="accent">FRAGILE</span>-safe</h1>
+    <div class="howto">
+      <div class="howto-row"><span class="howto-key">&uarr;</span><span>Jump potholes, manholes, leaves &amp; scooters — <b>Space / &uarr;</b> or tap the top half</span></div>
+      <div class="howto-row"><span class="howto-key">&darr;</span><span>Duck under road signs — <b>&darr;</b> or tap the bottom half</span></div>
+      <div class="howto-row"><span class="howto-key">&bull;</span><span>Every hit lowers package condition — reach the parcel machine before it runs out</span></div>
+    </div>
+    <button class="btn" id="start-btn">START DELIVERY</button>
+  </div>
+  <div id="gameover-overlay" class="overlay hidden">
+    <h1 style="color:#c94f4f">Package damaged</h1>
+    <p>The box didn't make it this time. Give it another go.</p>
+    <div class="stat-row"><div class="stat"><div class="num" id="go-distance">0m</div><div class="lbl">Distance</div></div></div>
+    <div class="btn-stack">
+      <button class="btn" id="retry-btn">TRY AGAIN</button>
+      <button class="btn secondary" id="home-btn-go">BACK TO HOME</button>
+    </div>
+  </div>
+  <div id="win-overlay" class="overlay hidden">
+    <div id="win-step-1" class="win-step">
+      <h1>Delivered <span class="accent">safely</span></h1>
+      <p>Nice hands. The package arrived intact — here's something for the road.</p>
+      <div class="stat-row">
+        <div class="stat"><div class="num" id="win-distance">0m</div><div class="lbl">Distance</div></div>
+        <div class="stat"><div class="num" id="win-condition">100%</div><div class="lbl">Condition</div></div>
+      </div>
+      <div class="coupon">
+        <div class="sub">Your reward</div>
+        <div class="code" id="coupon-code">FAST15</div>
+        <div class="sub">-15% off shipping</div>
+      </div>
+      <div class="copy-note" id="copy-note"></div>
+      <div class="btn-stack">
+        <button class="btn" id="copy-btn">COPY CODE</button>
+        <button class="btn secondary" id="win-next-btn">NEXT</button>
+      </div>
+    </div>
+    <div id="win-step-2" class="win-step step-hidden">
+      <h1>Play <span class="accent">again?</span></h1>
+      <div class="btn-stack">
+        <button class="btn" id="play-again-btn">PLAY AGAIN</button>
+        <button class="btn secondary" id="home-btn-win">BACK TO HOME</button>
+      </div>
+    </div>
+  </div>
+  <div id="hint"></div>
+  <div id="watermark">
+    <svg width="99" height="19" viewBox="0 0 148 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M70.3361 14.1505V22.8649H63.3837V15.1593C63.3837 12.736 62.5343 11.6327 60.6143 11.6327C58.6311 11.6327 57.5932 12.8627 57.5932 15.2519V22.8652H50.6739V7.13498H55.615L57.4062 10.3442C58.6311 7.92087 60.8028 6.66217 63.7607 6.66217C68.0721 6.66217 70.3361 9.24347 70.3361 14.1505Z" fill="#F3E9D6"/>
+      <path d="M73.1616 0.105644H80.2719V5.1834H73.1616V0.105644ZM73.2567 7.13393H80.1789V22.8663H73.2567V7.13393Z" fill="#F3E9D6"/>
+      <path d="M96.1898 6.66287C93.6391 6.66287 91.4422 7.60708 90.1199 9.49051V9.50187L90.116 9.49442L88.7977 7.13568H83.3849V27.9433H90.3042V20.948C91.7517 22.522 93.5123 23.3369 95.9683 23.3369C100.687 23.3369 103.866 20.0365 103.866 14.8739C103.867 9.93812 100.813 6.66287 96.1898 6.66287ZM93.4836 18.995C91.4674 18.995 90.1792 17.5187 90.1792 15.2509V14.6858C90.1792 12.2638 91.4042 10.9721 93.4506 10.9721C95.5285 10.9721 96.6928 12.3892 96.6928 14.8743C96.6932 17.4225 95.4959 18.995 93.4836 18.995Z" fill="#F3E9D6"/>
+      <path d="M115.063 6.65542C109.519 6.65542 105.779 8.80047 105.343 12.5105H112.381C112.537 11.2856 113.456 10.6207 115.021 10.6207C116.472 10.6207 117.362 11.1997 117.362 12.4257V13.016L111.79 13.5559C109.235 13.8367 107.6 14.3017 106.529 15.0918C105.43 15.882 104.894 17.0118 104.894 18.4935C104.894 21.483 107.319 23.3298 111.352 23.3298C114.36 23.3298 116.805 22.2149 117.662 20.4351V20.4199L117.666 20.4273C117.67 20.4234 117.67 20.4159 117.673 20.412V20.4422L119.025 22.8641H124.345V13.5268C124.344 8.87004 121.538 6.65542 115.063 6.65542ZM117.517 16.9274C117.517 18.4381 116.162 19.4643 114.146 19.4643C112.791 19.4643 111.946 18.8726 111.946 17.9284C111.946 17.0118 112.736 16.4773 114.498 16.2221L117.517 15.882V16.9274Z" fill="#F3E9D6"/>
+      <path d="M136.349 16.7371L133.854 18.9961V22.8666H126.933V0.0566559H133.854V12.6415L139.172 7.13393H147.478L141.729 12.6263L147.605 22.8666H139.958L136.349 16.7371Z" fill="#F3E9D6"/>
+      <path d="M26.8029 0.10601V22.8667H13.8045L0.649536 0.10601H8.44738L19.7672 19.8164V0.10601H26.8029Z" fill="#F3E9D6"/>
+      <path d="M48.701 15.1178C48.701 9.85684 45.4006 6.6146 39.4152 6.43605C39.242 6.42966 39.0613 6.42718 38.8806 6.42718C38.3294 6.42718 37.7795 6.45628 37.2741 6.52586C32.1381 7.04659 28.9072 10.1674 28.9072 14.8345C28.9072 20.0248 33.7006 23.1002 39.2345 23.1002C41.6401 23.1002 43.9179 22.812 46.5308 20.8085C46.7722 20.6254 47.0189 20.4245 47.2666 20.2079L44.8082 16.1894C44.6349 16.3903 44.4415 16.6029 44.2242 16.8187C43.2864 17.7441 41.9109 18.6859 39.8695 18.6859C37.6688 18.6859 35.7083 17.37 35.4542 15.8039H48.7014V15.1178H48.701ZM35.4534 12.4999C35.6089 10.806 36.7796 10.0805 38.7841 10.0805C40.7736 10.0805 41.9709 11.0197 41.9709 12.4999H35.4534Z" fill="#F3E9D6"/>
+    </svg>
+  </div>
+</div>
+<script>
+const BRAND = 0x9339f2;
+const BRAND_GLOW = 0xc79cf5;
+const BRAND_DEEP = 0x5b1fa6;
+
+const LEVEL_DISTANCE = 3000;
+const ARRIVAL_SPEED = 150;
+// The widest obstacle (the hole, ~244px wide once scaled) needs about 460 "meters" of travel
+// between spawning off the right edge and clearing the left edge, at the constant 2-pixels-per-meter
+// scroll ratio the game uses. Stopping spawns 500m before LEVEL_DISTANCE (comfortably more than
+// that 460m) guarantees the road is clear before the arrival sequence begins, no matter how long
+// the level is — derived from LEVEL_DISTANCE rather than hardcoded so it keeps working if that changes.
+const LAST_OBSTACLE_DISTANCE = LEVEL_DISTANCE - 500;
+const DURABILITY_MAX = 100;
+// Measured directly from the background art (1536x1024 source): the purple brick band starts
+// at y=885 (character + ground obstacles stand on its top edge) and the light curb strip above
+// it runs from y=831 to y=884 (obstacle-post bottoms land there so they read as posts planted
+// on the curb, not floating over the brick).
+const GROUND_Y_RATIO = 885/1024;
+const POST_Y_RATIO = 831/1024;
+// Nudges everything toward the bottom of the 405px-tall canvas without spilling off it or
+// off the background's own bands: the purple ground band leaves ~55px of margin below its top
+// edge, and the grey curb band above it is only ~21px tall, so each gets pushed as far down as
+// its own band comfortably allows.
+const GROUND_Y_SHIFT = 50;
+const POST_Y_SHIFT = 20;
+const DAMAGE = { ground: 30, air: 26 };
+const GRAVITY = 1600;
+const JUMP_VELOCITY = -620;
+
+let gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:0, isJumping:false, isDucking:false };
+// Survive across restarts (the Phaser game instance gets destroyed/recreated, but these
+// top-level variables don't) so back-to-back runs don't show the same skyline/ground twice in a row.
+let lastTopBgKey = null;
+let lastBottomBgKey = null;
+
+const OBSTACLE_DEFS = {
+  ground: [
+    { key:'obs_hole',    src:'assets/images/obstacles/bottom/hole.png',           targetH:32 },
+    { key:'obs_manhole', src:'assets/images/obstacles/bottom/manhole.png',        targetH:76 },
+    { key:'obs_leaves',  src:'assets/images/obstacles/bottom/pile-of-leaves.png', targetH:66 },
+    { key:'obs_scooter', src:'assets/images/obstacles/bottom/scooter.png',        targetH:72 }
+  ],
+  air: [
+    { key:'obs_stopsign',   src:'assets/images/obstacles/top/stop-sign.png',      targetH:190 },
+    { key:'obs_roadworks',  src:'assets/images/obstacles/top/road-works-sign.png',targetH:190 }
+  ]
+};
+const FINISH_DEF = { key:'parcel_machine', src:'assets/images/parcel-machine.png', targetH:210 };
+
+// The background art is split into two independently-scrolling layers for a parallax effect:
+// sky/skyline/river (distant, moves slower) and curb/brick ground (moves at full gameplay
+// speed, since the character and obstacles are anchored to it and would visibly slide across
+// it otherwise). Both crops share the same 1536px width and were cut at the exact same source
+// y=831 boundary, so a pair from the same original image lines up with zero gap when stacked.
+const BG_SOURCE_H = 1024;
+const BG_CUT_Y = 831;
+const BG_PARALLAX_FACTOR = 0.35; // top layer's scroll speed as a fraction of the ground's
+const TOP_BACKGROUND_DEFS = [
+  { key:'bgtop_0', src:'assets/images/backgrounds/top/bg-light-top.png' },
+  { key:'bgtop_1', src:'assets/images/backgrounds/top/bg-light-2-top.png' },
+  { key:'bgtop_2', src:'assets/images/backgrounds/top/bg-light-birds-top.png' },
+  { key:'bgtop_3', src:'assets/images/backgrounds/top/bg-light-bridge-top.png' },
+  { key:'bgtop_4', src:'assets/images/backgrounds/top/bg-light-plane-top.png' },
+  { key:'bgtop_5', src:'assets/images/backgrounds/top/bg-light-ship-top.png' }
+];
+const BOTTOM_BACKGROUND_DEFS = [
+  { key:'bgbottom_0', src:'assets/images/backgrounds/bottom/bg-light-bottom.png' },
+  { key:'bgbottom_1', src:'assets/images/backgrounds/bottom/bg-light-2-bottom.png' },
+  { key:'bgbottom_2', src:'assets/images/backgrounds/bottom/bg-light-birds-bottom.png' },
+  { key:'bgbottom_3', src:'assets/images/backgrounds/bottom/bg-light-bridge-bottom.png' },
+  { key:'bgbottom_4', src:'assets/images/backgrounds/bottom/bg-light-plane-bottom.png' },
+  { key:'bgbottom_5', src:'assets/images/backgrounds/bottom/bg-light-ship-bottom.png' }
+];
+
+const COURIER_ANIM_ORIGIN_Y = 0.984375;
+const COURIER_ANIMS = {
+  run: {
+    atlasKey:'courier_run', png:'assets/animations/courier_running.png', json:'assets/animations/courier_running.json',
+    prefix:'courier_running_default_', suffix:'.webp', start:0, end:31, originX:0.5028248587570622, loop:true, heightRatio:1
+  },
+  duck: {
+    // the duck art fills its own canvas just as fully as the run art does (measured: ~247px vs
+    // ~249px of character content out of the same 256px-tall canvas), so scaling both by canvas
+    // height alone keeps them the same height — it just looks wider/bulkier, not shorter/crouched.
+    // heightRatio pulls the duck pose down to a believable crouch height.
+    atlasKey:'courier_duck', png:'assets/animations/courier_ducking.png', json:'assets/animations/courier_ducking.json',
+    prefix:'courier_ducking_ducking_', suffix:'.png', start:0, end:10, originX:0.5, loop:true, heightRatio:0.75
+  },
+  walk: {
+    // measured content bbox is 115x250 out of the same 256px-tall canvas — essentially the same
+    // fill ratio as running (120x249), so it shares the run scale rather than needing its own ratio.
+    atlasKey:'courier_walk', png:'assets/animations/courier_walking.png', json:'assets/animations/courier_walking.json',
+    prefix:'courier_walking_default_', suffix:'.png', start:0, end:18, originX:0.5, loop:true, heightRatio:1
+  }
+};
+
+class RunnerScene extends Phaser.Scene {
+  constructor(){ super('runner'); }
+
+  preload(){
+    OBSTACLE_DEFS.ground.forEach(d=>this.load.image(d.key, d.src));
+    OBSTACLE_DEFS.air.forEach(d=>this.load.image(d.key, d.src));
+    this.load.image(FINISH_DEF.key, FINISH_DEF.src);
+    TOP_BACKGROUND_DEFS.forEach(b=>this.load.image(b.key, b.src));
+    BOTTOM_BACKGROUND_DEFS.forEach(b=>this.load.image(b.key, b.src));
+    Object.values(COURIER_ANIMS).forEach(a=>this.load.atlas(a.atlasKey, a.png, a.json));
+  }
+
+  create(){
+    const w = this.scale.width, h = this.scale.height;
+    this.groundY = h*GROUND_Y_RATIO + GROUND_Y_SHIFT;
+    this.postY = h*POST_Y_RATIO + POST_Y_SHIFT;
+    // the courier runs halfway between its pre-shift and post-shift ground line, while ground
+    // obstacles and the parcel machine keep the full shift
+    this.courierY = h*GROUND_Y_RATIO + GROUND_Y_SHIFT/2;
+    gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:this.courierY, isJumping:false, isDucking:false };
+
+    // Background is two independently-scrolling rows of full-image panels (not a single
+    // repeating tile) so different skylines can appear within one run: each panel scrolls left
+    // and, once fully off-screen, gets recycled to the right edge with a new image that isn't
+    // the same as its new left neighbor. The sky/skyline/river layer and the curb/brick ground
+    // layer are cropped from the same source at the same y, so they always stack with no gap.
+    this.bgScale = h / BG_SOURCE_H;
+    this.bgPanelW = TOP_BACKGROUND_DEFS.length ? this.textures.get(TOP_BACKGROUND_DEFS[0].key).getSourceImage().width * this.bgScale : 0;
+    const topDispH = BG_CUT_Y * this.bgScale;
+    const bottomDispH = h - topDispH;
+    const panelCount = Math.ceil(w / this.bgPanelW) + 1;
+    this.bgTopPanels = this.createBgPanelSet(TOP_BACKGROUND_DEFS, 0, topDispH, panelCount,
+      ()=>lastTopBgKey, k=>lastTopBgKey=k);
+    this.bgBottomPanels = this.createBgPanelSet(BOTTOM_BACKGROUND_DEFS, topDispH, bottomDispH, panelCount,
+      ()=>lastBottomBgKey, k=>lastBottomBgKey=k);
+
+    this.rain = [];
+    for(let i=0;i<70;i++){
+      this.rain.push({
+        x: Phaser.Math.Between(0,w), y: Phaser.Math.Between(0,h),
+        len: Phaser.Math.Between(14,26), speed: Phaser.Math.Between(560,900)
+      });
+    }
+    this.rainGfx = this.add.graphics();
+
+    this.playerX = w*0.22;
+    this.playerContainer = this.add.container(this.playerX, this.courierY);
+    this.buildCourier();
+    // keep the courier drawn in front of obstacles/the parcel machine regardless of add order
+    this.playerContainer.setDepth(5);
+
+    this.obstacles = [];
+    this.spawnTimer = 0;
+    this.spawnInterval = 1000;
+    this.lastObstacleKey = null;
+
+    this.finish = null;
+    this.finishTriggered = false;
+    this.arriving = false;
+
+    const HUD_DEPTH = 20;
+    this.hudBg = this.add.graphics().setDepth(HUD_DEPTH);
+    this.hudBg.fillStyle(0x140b22, 0.6);
+    this.hudBg.fillRoundedRect(12,12,w-24,50,10);
+    this.hudBg.lineStyle(1,0x9339f2,0.3);
+    this.hudBg.strokeRoundedRect(12,12,w-24,50,10);
+
+    this.hudLogo = this.add.graphics().setDepth(HUD_DEPTH);
+    this.hudLogo.fillStyle(BRAND,1);
+    this.hudLogo.fillRoundedRect(22,24,26,26,6);
+    this.hudLogoText = this.add.text(35,37,'V',{fontFamily:'Space Grotesk',fontSize:'16px',fontStyle:'700',color:'#ffffff'}).setOrigin(0.5).setDepth(HUD_DEPTH);
+
+    this.distText = this.add.text(58,18,'0 m',{ fontFamily:'Space Grotesk', fontSize:'22px', fontStyle:'700', color:'#f3e9d6' }).setDepth(HUD_DEPTH);
+    this.distLabel = this.add.text(58,42,'DISTANCE',{ fontFamily:'Inter', fontSize:'9px', color:'#b9a9d6', letterSpacing:1 }).setDepth(HUD_DEPTH);
+
+    this.barX = w*0.5; this.barY = 26; this.barW = w*0.36; this.barH = 14;
+    this.durLabel = this.add.text(this.barX, this.barY-13, 'PACKAGE CONDITION',{ fontFamily:'Inter', fontSize:'9px', color:'#b9a9d6', letterSpacing:1 }).setDepth(HUD_DEPTH);
+    this.barBg = this.add.graphics().setDepth(HUD_DEPTH);
+    this.barFill = this.add.graphics().setDepth(HUD_DEPTH);
+
+    this.input.keyboard.on('keydown-SPACE', ()=>this.tryJump());
+    this.input.keyboard.on('keydown-UP', ()=>this.tryJump());
+    this.input.keyboard.on('keydown-DOWN', ()=>this.startDuck());
+    this.input.keyboard.on('keyup-DOWN', ()=>this.endDuck());
+
+    this.input.on('pointerdown', (p)=>{
+      if(p.y > this.scale.height*0.55) this.startDuck();
+      else this.tryJump();
+    });
+    this.input.on('pointerup', ()=>this.endDuck());
+  }
+
+
+  buildCourier(){
+    Object.entries(COURIER_ANIMS).forEach(([key, a])=>{
+      if(!this.anims.exists(key)){
+        this.anims.create({
+          key,
+          frames: this.anims.generateFrameNames(a.atlasKey, {
+            prefix: a.prefix, start: a.start, end: a.end, zeroPad: 3, suffix: a.suffix
+          }),
+          frameRate: 1000/42,
+          repeat: a.loop ? -1 : 0
+        });
+      }
+    });
+
+    this.shadowGfx = this.add.graphics();
+    this.playerContainer.add(this.shadowGfx);
+
+    // both atlases share the same 256px frame height, so this is the shared baseline scale;
+    // per-animation heightRatio then tunes each pose relative to it (see COURIER_ANIMS)
+    const runnerH = 133; // 116 * 1.15
+    const runDef = COURIER_ANIMS.run;
+    const firstFrameName = `${runDef.prefix}${String(runDef.start).padStart(3,'0')}${runDef.suffix}`;
+    const frame = this.textures.get(runDef.atlasKey).get(firstFrameName);
+    this.playerBaseScale = runnerH / frame.height;
+
+    this.playerSprite = this.add.sprite(0, 0, runDef.atlasKey, firstFrameName);
+    this.playerContainer.add(this.playerSprite);
+    this._currentAnimKey = null;
+    this.setCourierAnim('run');
+
+    this.boxGlow = this.add.graphics();
+    this.playerContainer.addAt(this.boxGlow, 1);
+
+    this.redrawCourier();
+  }
+
+  setCourierAnim(key){
+    if(this._currentAnimKey === key) return;
+    const def = COURIER_ANIMS[key];
+    this.playerSprite.setOrigin(def.originX, COURIER_ANIM_ORIGIN_Y);
+    this.playerSprite.setScale(this.playerBaseScale * def.heightRatio);
+    this.playerSprite.play(key);
+    this._currentAnimKey = key;
+  }
+
+  redrawCourier(){
+    const ducking = gameState.isDucking && !gameState.isJumping;
+
+    const shadowScale = gameState.isJumping ? Phaser.Math.Clamp(1 - Math.abs(gameState.vy)/900, 0.35, 1) : 1;
+    this.shadowGfx.clear();
+    this.shadowGfx.fillStyle(0x000000, 0.35*shadowScale);
+    this.shadowGfx.fillEllipse(0, this.courierY - this.playerContainer.y, 40*shadowScale, 10*shadowScale);
+
+    // jumping always freezes on the run cycle — ducking is already forced off mid-air
+    this.setCourierAnim(this.arriving ? 'walk' : (ducking ? 'duck' : 'run'));
+    if(gameState.isJumping){
+      if(!this.playerSprite.anims.isPaused) this.playerSprite.anims.pause();
+    } else if(this.playerSprite.anims.isPaused){
+      this.playerSprite.anims.resume();
+    }
+
+    this.boxGlow.clear();
+    this.boxGlow.fillStyle(BRAND_GLOW, 0.16);
+    this.boxGlow.fillCircle(14, -40, 24);
+  }
+
+  tryJump(){
+    if(!gameState.running || this.arriving) return;
+    if(gameState.isJumping) return;
+    if(gameState.isDucking) this.endDuck();
+    gameState.isJumping = true;
+    gameState.vy = JUMP_VELOCITY;
+  }
+  startDuck(){
+    if(!gameState.running || this.arriving) return;
+    if(gameState.isJumping) return;
+    gameState.isDucking = true;
+  }
+  endDuck(){ gameState.isDucking = false; }
+
+  pickKeyFrom(defs, excludeKey){
+    if(defs.length <= 1) return defs[0].key;
+    let def;
+    do {
+      def = Phaser.Utils.Array.GetRandom(defs);
+    } while (def.key === excludeKey);
+    return def.key;
+  }
+
+  createBgPanelSet(defs, y, dispH, panelCount, getLastKey, setLastKey){
+    const panels = [];
+    let px = 0;
+    for(let i=0;i<panelCount;i++){
+      const key = this.pickKeyFrom(defs, getLastKey());
+      setLastKey(key);
+      const img = this.add.image(px, y, key).setOrigin(0,0).setDisplaySize(this.bgPanelW, dispH).setDepth(-10);
+      panels.push({ img, x: px, key });
+      px += this.bgPanelW;
+    }
+    return panels;
+  }
+
+  updateBgPanelSet(panels, dx, defs, getLastKey, setLastKey){
+    panels.forEach(p=>{ p.x -= dx; });
+    panels.forEach(p=>{
+      if(p.x + this.bgPanelW <= 0){
+        const rightmost = panels.reduce((a,b)=> b.x > a.x ? b : a);
+        p.x = rightmost.x + this.bgPanelW;
+        p.key = this.pickKeyFrom(defs, rightmost.key);
+        setLastKey(p.key);
+        p.img.setTexture(p.key);
+      }
+      p.img.x = p.x;
+    });
+  }
+
+  spawnObstacle(){
+    const w=this.scale.width;
+    let def;
+    if(this.lastObstacleKey === 'obs_roadworks'){
+      // the road-works sign always leads into a manhole right after it
+      def = OBSTACLE_DEFS.ground.find(d => d.key === 'obs_manhole');
+    } else {
+      const pool = Math.random() < 0.55 ? OBSTACLE_DEFS.ground : OBSTACLE_DEFS.air;
+      do {
+        def = Phaser.Utils.Array.GetRandom(pool);
+      } while (pool.length > 1 && def.key === this.lastObstacleKey);
+    }
+    this.lastObstacleKey = def.key;
+    const groundType = OBSTACLE_DEFS.ground.includes(def);
+    const type = groundType ? 'ground' : 'air';
+
+    const tex = this.textures.get(def.key).getSourceImage();
+    const scale = def.targetH / tex.height;
+    const dispW = tex.width*scale, dispH = def.targetH;
+    const x = w + dispW/2 + 20;
+    // ground obstacles sit on the purple band's top edge; overhead obstacle posts land
+    // on the grey curb above it, so they read as posts planted on the curb
+    const y = groundType ? this.groundY : this.postY;
+
+    const img = this.add.image(x, y, def.key).setOrigin(0.5, 1).setDisplaySize(dispW, dispH);
+    this.obstacles.push({ img, x, type, hit:false, width: dispW });
+  }
+
+  updateObstacleVisual(o){
+    // no sway: these are full ground-mounted post+sign images now, not a sign hanging from a
+    // wire, so swaying the whole sprite made the rigid post look like it was sliding around
+    o.img.x = o.x;
+  }
+
+  // Called once, the instant the run distance is covered: the endless-runner part of the
+  // level is over. The world stops scrolling (the "camera" stops), the parcel machine slides
+  // in from off-screen just like an obstacle would and settles near the right edge, then the
+  // courier switches to the walk cycle and crosses the frozen scene on its own to reach it —
+  // making it read as a scripted arrival, not more of the same dodging.
+  startArrival(w){
+    this.arriving = true;
+    gameState.isJumping = false;
+    gameState.isDucking = false;
+    gameState.vy = 0;
+    this.playerContainer.y = this.courierY;
+
+    const tex = this.textures.get(FINISH_DEF.key).getSourceImage();
+    const scale = FINISH_DEF.targetH / tex.height;
+    const dispW = tex.width*scale, dispH = FINISH_DEF.targetH;
+    const startX = w + dispW/2 + 20; // enters from off-screen, same as any obstacle
+    const restX = w - dispW/2 - 40;  // fixed resting spot, fully on screen near the right edge
+    const img = this.add.image(startX, this.groundY, FINISH_DEF.key).setOrigin(0.5,1).setDisplaySize(dispW,dispH);
+    this.finish = { img, x: startX, restX, width: dispW, settled: false };
+  }
+
+  updateFinish(dt){
+    if(!this.arriving || !this.finish || this.finishTriggered) return;
+
+    if(!this.finish.settled){
+      this.finish.x -= ARRIVAL_SPEED*dt;
+      if(this.finish.x <= this.finish.restX){
+        this.finish.x = this.finish.restX;
+        this.finish.settled = true;
+      }
+      this.finish.img.x = this.finish.x;
+      return; // the courier waits for the machine to settle before it starts walking
+    }
+
+    this.playerContainer.x += ARRIVAL_SPEED*dt;
+    if(this.playerContainer.x >= this.finish.x - this.finish.width*0.42){
+      this.finishTriggered = true;
+      this.endGame(true);
+    }
+  }
+
+  update(time, delta){
+    if(!gameState.running) return;
+    const dt = delta/1000;
+    const w=this.scale.width, h=this.scale.height;
+    this._nowMs = time;
+
+    if(!this.arriving){
+      // speed stays constant at the base value for the whole run — it used to ramp up to a
+      // cap of 560, but that ramp took ~2444m to finish regardless of level length, so a level
+      // this long would spend most of its distance still visibly accelerating
+      gameState.distance += gameState.speed*dt*0.5;
+    }
+    this.distText.setText(Math.floor(gameState.distance)+' m');
+
+    // "the camera stops" once the parcel machine has settled into place — up to that point
+    // the background keeps scrolling (at the calmer arrival pace once arriving begins), so the
+    // machine sliding in reads as the camera still moving, not an object drifting over a static
+    // scene. After it settles, we simply stop touching these and the last frame drawn stays put.
+    if(!this.arriving || (this.finish && !this.finish.settled)){
+      const scrollSpeed = this.arriving ? ARRIVAL_SPEED : gameState.speed;
+      const groundDx = scrollSpeed*dt;
+      const skyDx = groundDx * BG_PARALLAX_FACTOR; // distant layer scrolls slower — the parallax
+      this.updateBgPanelSet(this.bgTopPanels, skyDx, TOP_BACKGROUND_DEFS, ()=>lastTopBgKey, k=>lastTopBgKey=k);
+      this.updateBgPanelSet(this.bgBottomPanels, groundDx, BOTTOM_BACKGROUND_DEFS, ()=>lastBottomBgKey, k=>lastBottomBgKey=k);
+    }
+
+    this.rainGfx.clear();
+    this.rainGfx.lineStyle(2, 0xcfe0f5, 0.35);
+    this.rain.forEach(r=>{
+      r.x -= 90*dt;
+      r.y += r.speed*dt;
+      if(r.y > h){ r.y = -20; r.x = Phaser.Math.Between(0,w); }
+      this.rainGfx.lineBetween(r.x, r.y, r.x-8, r.y+r.len);
+    });
+
+    if(gameState.isJumping){
+      gameState.vy += GRAVITY*dt;
+      this.playerContainer.y += gameState.vy*dt;
+      if(this.playerContainer.y >= this.courierY){
+        this.playerContainer.y = this.courierY;
+        gameState.isJumping = false;
+        gameState.vy = 0;
+      }
+    }
+    this.redrawCourier();
+
+    if(!this.arriving){
+      this.spawnTimer += delta;
+      // constant spacing throughout — this used to shrink toward a 480ms floor as distance grew,
+      // which bunched obstacles closer together later in a long run than at the start
+      const interval = this.spawnInterval * 2;
+      if(this.spawnTimer > interval && gameState.distance < LAST_OBSTACLE_DISTANCE){
+        this.spawnTimer = 0;
+        this.spawnObstacle();
+      }
+
+      for(let i=this.obstacles.length-1;i>=0;i--){
+        const o = this.obstacles[i];
+        o.x -= gameState.speed*dt;
+        this.updateObstacleVisual(o);
+
+        // Checked every frame while inside the zone (not just once on first contact) — a
+        // one-shot check let the player clear an obstacle at the moment they first entered its
+        // zone, then keep descending/standing-up into it for the rest of the overlap without
+        // ever failing, which looked like "jumping into" it for free. o.hit now only locks once
+        // an actual hit lands, so a late mistake during the overlap still gets caught.
+        const dx = Math.abs(o.x - this.playerX);
+        if(!o.hit && dx < o.width*0.5){
+          let collided = false;
+          if(o.type==='ground'){
+            const clearance = this.groundY - this.playerContainer.y;
+            if(clearance < 46) collided = true;
+          } else {
+            const ducking = gameState.isDucking && !gameState.isJumping;
+            if(!ducking) collided = true;
+          }
+          if(collided){
+            o.hit = true;
+            this.applyDamage(o.type);
+          }
+        }
+
+        if(o.x < -60){
+          o.img.destroy();
+          this.obstacles.splice(i,1);
+        }
+      }
+    }
+
+    if(!this.arriving && gameState.distance >= LEVEL_DISTANCE){
+      this.startArrival(w);
+    }
+    this.updateFinish(dt);
+
+    this.barBg.clear();
+    this.barBg.fillStyle(0x140b22,0.6);
+    this.barBg.fillRoundedRect(this.barX-this.barW/2,this.barY,this.barW,this.barH,8);
+    this.barFill.clear();
+    const pct = gameState.durability/DURABILITY_MAX;
+    const col = pct>0.5 ? BRAND : (pct>0.25 ? 0xd9a548 : 0x7a2e2e);
+    this.barFill.fillStyle(col,1);
+    this.barFill.fillRoundedRect(this.barX-this.barW/2,this.barY,this.barW*pct,this.barH,8);
+
+    this.playerContainer.rotation = (1-pct)*0.06*Math.sin(time/130);
+  }
+
+  applyDamage(type){
+    gameState.durability = Math.max(0, gameState.durability - DAMAGE[type]);
+    this.cameras.main.flash(120,224,122,122,false);
+    this.cameras.main.shake(140,0.006);
+    this.tweens.add({ targets:this.playerContainer, scaleX:0.88, scaleY:1.1, duration:80, yoyo:true });
+    if(gameState.durability<=0){
+      this.endGame(false);
+    }
+  }
+
+  endGame(won){
+    if(!gameState.running) return;
+    gameState.running = false;
+    this.time.delayedCall(250, ()=>{
+      if(won){
+        document.getElementById('win-distance').textContent = Math.floor(gameState.distance)+'m';
+        document.getElementById('win-condition').textContent = Math.round(gameState.durability)+'%';
+        document.getElementById('win-step-1').classList.remove('step-hidden');
+        document.getElementById('win-step-2').classList.add('step-hidden');
+        document.getElementById('win-overlay').classList.remove('hidden');
+      } else {
+        document.getElementById('go-distance').textContent = Math.floor(gameState.distance)+'m';
+        document.getElementById('gameover-overlay').classList.remove('hidden');
+      }
+    });
+  }
+}
+
+// EXPERIMENT (index2): match the CSS breakpoint above — portrait phones get a taller 4:3
+// logical canvas (720x540) instead of 16:9 (720x405). Width is identical either way, so every
+// gameplay constant that depends on it (obstacle spawn margin, speed, spacing) is untouched —
+// only the vertical framing changes. This is decided once at load, same as the rest of the
+// game's sizing; it doesn't re-run if the phone is rotated mid-session.
+const IS_PORTRAIT_LAYOUT = window.matchMedia('(orientation: portrait)').matches;
+const config = {
+  type: Phaser.AUTO,
+  parent: 'phaser-container',
+  width: 720,
+  height: IS_PORTRAIT_LAYOUT ? 540 : 405,
+  backgroundColor: '#150c26',
+  scale:{ mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  scene: [RunnerScene]
+};
+
+let game = null;
+
+// --- Fullscreen toggle ---
+// No browser lets a page force-rotate the physical device, and iOS Safari doesn't support the
+// Orientation Lock API at all outside an installed home-screen PWA — so this is a manual,
+// user-triggered control rather than something automatic: going fullscreen is also the required
+// context for screen.orientation.lock() to succeed on the browsers that do support it.
+function updateFullscreenIcon(){
+  const isFs = !!document.fullscreenElement;
+  document.getElementById('fullscreen-enter-icon').style.display = isFs ? 'none' : '';
+  document.getElementById('fullscreen-exit-icon').style.display = isFs ? '' : 'none';
+}
+document.addEventListener('fullscreenchange', updateFullscreenIcon);
+updateFullscreenIcon();
+bindTap(document.getElementById('fullscreen-btn'), async function(){
+  try{
+    if(document.fullscreenElement){
+      await document.exitFullscreen();
+    } else {
+      // EXPERIMENT (index2): unlike the base version, this doesn't attempt an orientation
+      // lock — the whole point of this variant is a portrait layout that already works well,
+      // so forcing landscape here would fight the CSS/config choices made above.
+      await document.documentElement.requestFullscreen();
+    }
+  }catch(e){
+    // Fullscreen unsupported or denied — no fallback needed, the game works windowed too.
+  }
+});
+
+function startGame(){
+  if(typeof Phaser === 'undefined'){
+    alert('The game engine could not load — check your internet connection and reload the page. If this keeps happening, try opening the page directly in Safari rather than a preview/share view.');
+    return;
+  }
+  document.getElementById('start-overlay').classList.add('hidden');
+  document.getElementById('gameover-overlay').classList.add('hidden');
+  document.getElementById('win-overlay').classList.add('hidden');
+  if(game){ game.destroy(true); }
+  game = new Phaser.Game(config);
+}
+
+function goHome(){
+  document.getElementById('gameover-overlay').classList.add('hidden');
+  document.getElementById('win-overlay').classList.add('hidden');
+  document.getElementById('start-overlay').classList.remove('hidden');
+  if(game){ game.destroy(true); game = null; }
+}
+
+// Touch-safe binding: iOS Safari can occasionally swallow a bare 'click'
+// after a touch, so we handle touchend directly (and guard against the
+// click that follows it firing a second time).
+function bindTap(el, handler){
+  if(!el) return;
+  let recentTouch = false;
+  el.addEventListener('touchend', function(e){
+    recentTouch = true;
+    e.preventDefault();
+    handler(e);
+    setTimeout(function(){ recentTouch = false; }, 400);
+  }, { passive:false });
+  el.addEventListener('click', function(e){
+    if(recentTouch) return;
+    handler(e);
+  });
+}
+
+bindTap(document.getElementById('start-btn'), startGame);
+bindTap(document.getElementById('retry-btn'), startGame);
+bindTap(document.getElementById('play-again-btn'), startGame);
+bindTap(document.getElementById('home-btn-go'), goHome);
+bindTap(document.getElementById('home-btn-win'), goHome);
+bindTap(document.getElementById('win-next-btn'), function(){
+  document.getElementById('win-step-1').classList.add('step-hidden');
+  document.getElementById('win-step-2').classList.remove('step-hidden');
+});
+
+bindTap(document.getElementById('copy-btn'), function(){
+  const code = document.getElementById('coupon-code').textContent;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(code).then(function(){
+      document.getElementById('copy-note').textContent = 'Copied to clipboard';
+      setTimeout(function(){ document.getElementById('copy-note').textContent=''; }, 1800);
+    }).catch(function(){
+      document.getElementById('copy-note').textContent = code;
+    });
+  } else {
+    document.getElementById('copy-note').textContent = code;
+  }
+});
+</script>
+</body>
+</html>
