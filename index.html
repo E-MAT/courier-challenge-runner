@@ -34,6 +34,14 @@
     border-radius:16px;
     overflow:hidden;
   }
+  /* Below 1200px this stays capped at 720px as before. From 1200px up, let the card grow with
+     the viewport (up to a 1200px ceiling so it doesn't get absurd on ultrawide monitors) instead
+     of staying pinned to the same fixed size regardless of how much room is available. */
+  @media (min-width: 1200px){
+    #game-wrap{
+      width:min(75vw, 1200px);
+    }
+  }
   #game-wrap canvas{ display:block; width:100% !important; height:100% !important; }
   .display{font-family:'Space Grotesk',sans-serif;}
   .overlay{
@@ -164,6 +172,33 @@
     .btn.secondary{ font-size:9px; padding:3px 10px; }
     .btn-stack{ gap:3px; margin-top:2px; }
   }
+  /* The card itself already grows past 1200px wide (see #game-wrap above); scale the menu
+     content up to match so it fills the extra room instead of sitting small in the middle
+     of a much bigger card. */
+  @media (min-width: 1200px){
+    .overlay{ padding:26px 34px; }
+    .brand-lockup{ margin-bottom:14px; gap:14px; }
+    .brand-lockup svg{ height:25px; }
+    .brand-lockup .pipe{ height:20px; }
+    .brand-lockup .tag{ font-size:14px; }
+    .overlay h1{ font-size:38px; margin:0 0 8px; }
+    .overlay p{ font-size:17px; max-width:480px; margin:2px 0 14px; }
+    .howto{ max-width:480px; gap:12px; margin:6px 0 20px; }
+    .howto-row{ font-size:16px; gap:14px; }
+    .howto-key{ width:34px; height:34px; font-size:16px; border-radius:9px; }
+    .stat-row{ gap:34px; margin-bottom:11px; }
+    .stat .num{ font-size:34px; }
+    .stat .lbl{ font-size:13px; }
+    .coupon{ padding:14px 30px; border-radius:15px; gap:6px; }
+    .coupon::before, .coupon::after{ width:18px; height:18px; }
+    .coupon::before{ left:-9px; } .coupon::after{ right:-9px; }
+    .coupon .code{ font-size:32px; }
+    .coupon .sub{ font-size:13px; }
+    .copy-note{ font-size:13px; height:15px; }
+    .btn{ font-size:19px; padding:15px 38px; border-radius:13px; }
+    .btn.secondary{ font-size:15px; padding:11px 24px; }
+    .btn-stack{ gap:11px; margin-top:9px; }
+  }
 </style>
 </head>
 <body>
@@ -277,9 +312,10 @@ const GRAVITY = 1600;
 const JUMP_VELOCITY = -620;
 
 let gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:0, isJumping:false, isDucking:false };
-// Survives across restarts (the Phaser game instance gets destroyed/recreated, but this
-// top-level variable doesn't) so back-to-back runs don't show the same skyline twice in a row.
-let lastBackgroundKey = null;
+// Survive across restarts (the Phaser game instance gets destroyed/recreated, but these
+// top-level variables don't) so back-to-back runs don't show the same skyline/ground twice in a row.
+let lastTopBgKey = null;
+let lastBottomBgKey = null;
 
 const OBSTACLE_DEFS = {
   ground: [
@@ -295,15 +331,29 @@ const OBSTACLE_DEFS = {
 };
 const FINISH_DEF = { key:'parcel_machine', src:'assets/images/parcel-machine.png', targetH:210 };
 
-// All six share the identical curb/brick foreground layout — only the skyline and sky
-// embellishment (birds/plane/ship/bridge) differ — so any one can be picked at random.
-const BACKGROUND_DEFS = [
-  { key:'bg_0', src:'assets/images/backgrounds/bg-light.png' },
-  { key:'bg_1', src:'assets/images/backgrounds/bg-light-2.png' },
-  { key:'bg_2', src:'assets/images/backgrounds/bg-light-birds.png' },
-  { key:'bg_3', src:'assets/images/backgrounds/bg-light-bridge.png' },
-  { key:'bg_4', src:'assets/images/backgrounds/bg-light-plane.png' },
-  { key:'bg_5', src:'assets/images/backgrounds/bg-light-ship.png' }
+// The background art is split into two independently-scrolling layers for a parallax effect:
+// sky/skyline/river (distant, moves slower) and curb/brick ground (moves at full gameplay
+// speed, since the character and obstacles are anchored to it and would visibly slide across
+// it otherwise). Both crops share the same 1536px width and were cut at the exact same source
+// y=831 boundary, so a pair from the same original image lines up with zero gap when stacked.
+const BG_SOURCE_H = 1024;
+const BG_CUT_Y = 831;
+const BG_PARALLAX_FACTOR = 0.35; // top layer's scroll speed as a fraction of the ground's
+const TOP_BACKGROUND_DEFS = [
+  { key:'bgtop_0', src:'assets/images/backgrounds/top/bg-light-top.png' },
+  { key:'bgtop_1', src:'assets/images/backgrounds/top/bg-light-2-top.png' },
+  { key:'bgtop_2', src:'assets/images/backgrounds/top/bg-light-birds-top.png' },
+  { key:'bgtop_3', src:'assets/images/backgrounds/top/bg-light-bridge-top.png' },
+  { key:'bgtop_4', src:'assets/images/backgrounds/top/bg-light-plane-top.png' },
+  { key:'bgtop_5', src:'assets/images/backgrounds/top/bg-light-ship-top.png' }
+];
+const BOTTOM_BACKGROUND_DEFS = [
+  { key:'bgbottom_0', src:'assets/images/backgrounds/bottom/bg-light-bottom.png' },
+  { key:'bgbottom_1', src:'assets/images/backgrounds/bottom/bg-light-2-bottom.png' },
+  { key:'bgbottom_2', src:'assets/images/backgrounds/bottom/bg-light-birds-bottom.png' },
+  { key:'bgbottom_3', src:'assets/images/backgrounds/bottom/bg-light-bridge-bottom.png' },
+  { key:'bgbottom_4', src:'assets/images/backgrounds/bottom/bg-light-plane-bottom.png' },
+  { key:'bgbottom_5', src:'assets/images/backgrounds/bottom/bg-light-ship-bottom.png' }
 ];
 
 const COURIER_ANIM_ORIGIN_Y = 0.984375;
@@ -335,7 +385,8 @@ class RunnerScene extends Phaser.Scene {
     OBSTACLE_DEFS.ground.forEach(d=>this.load.image(d.key, d.src));
     OBSTACLE_DEFS.air.forEach(d=>this.load.image(d.key, d.src));
     this.load.image(FINISH_DEF.key, FINISH_DEF.src);
-    BACKGROUND_DEFS.forEach(b=>this.load.image(b.key, b.src));
+    TOP_BACKGROUND_DEFS.forEach(b=>this.load.image(b.key, b.src));
+    BOTTOM_BACKGROUND_DEFS.forEach(b=>this.load.image(b.key, b.src));
     Object.values(COURIER_ANIMS).forEach(a=>this.load.atlas(a.atlasKey, a.png, a.json));
   }
 
@@ -348,22 +399,20 @@ class RunnerScene extends Phaser.Scene {
     this.courierY = h*GROUND_Y_RATIO + GROUND_Y_SHIFT/2;
     gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:this.courierY, isJumping:false, isDucking:false };
 
-    // Background is a row of full-image panels (not a single repeating tile) so different
-    // skylines can appear within one run: each panel scrolls left and, once fully off-screen,
-    // gets recycled to the right edge with a new image that isn't the same as its new left neighbor.
-    const bgTex = this.textures.get(BACKGROUND_DEFS[0].key).getSourceImage();
-    this.bgScale = h / bgTex.height;
-    this.bgPanelW = bgTex.width * this.bgScale;
+    // Background is two independently-scrolling rows of full-image panels (not a single
+    // repeating tile) so different skylines can appear within one run: each panel scrolls left
+    // and, once fully off-screen, gets recycled to the right edge with a new image that isn't
+    // the same as its new left neighbor. The sky/skyline/river layer and the curb/brick ground
+    // layer are cropped from the same source at the same y, so they always stack with no gap.
+    this.bgScale = h / BG_SOURCE_H;
+    this.bgPanelW = TOP_BACKGROUND_DEFS.length ? this.textures.get(TOP_BACKGROUND_DEFS[0].key).getSourceImage().width * this.bgScale : 0;
+    const topDispH = BG_CUT_Y * this.bgScale;
+    const bottomDispH = h - topDispH;
     const panelCount = Math.ceil(w / this.bgPanelW) + 1;
-    this.bgPanels = [];
-    let px = 0;
-    for(let i=0;i<panelCount;i++){
-      const key = this.pickBgKey(lastBackgroundKey);
-      lastBackgroundKey = key;
-      const img = this.add.image(px, 0, key).setOrigin(0,0).setDisplaySize(this.bgPanelW, h).setDepth(-10);
-      this.bgPanels.push({ img, x: px, key });
-      px += this.bgPanelW;
-    }
+    this.bgTopPanels = this.createBgPanelSet(TOP_BACKGROUND_DEFS, 0, topDispH, panelCount,
+      ()=>lastTopBgKey, k=>lastTopBgKey=k);
+    this.bgBottomPanels = this.createBgPanelSet(BOTTOM_BACKGROUND_DEFS, topDispH, bottomDispH, panelCount,
+      ()=>lastBottomBgKey, k=>lastBottomBgKey=k);
 
     this.rain = [];
     for(let i=0;i<70;i++){
@@ -502,13 +551,40 @@ class RunnerScene extends Phaser.Scene {
   }
   endDuck(){ gameState.isDucking = false; }
 
-  pickBgKey(excludeKey){
-    if(BACKGROUND_DEFS.length <= 1) return BACKGROUND_DEFS[0].key;
+  pickKeyFrom(defs, excludeKey){
+    if(defs.length <= 1) return defs[0].key;
     let def;
     do {
-      def = Phaser.Utils.Array.GetRandom(BACKGROUND_DEFS);
+      def = Phaser.Utils.Array.GetRandom(defs);
     } while (def.key === excludeKey);
     return def.key;
+  }
+
+  createBgPanelSet(defs, y, dispH, panelCount, getLastKey, setLastKey){
+    const panels = [];
+    let px = 0;
+    for(let i=0;i<panelCount;i++){
+      const key = this.pickKeyFrom(defs, getLastKey());
+      setLastKey(key);
+      const img = this.add.image(px, y, key).setOrigin(0,0).setDisplaySize(this.bgPanelW, dispH).setDepth(-10);
+      panels.push({ img, x: px, key });
+      px += this.bgPanelW;
+    }
+    return panels;
+  }
+
+  updateBgPanelSet(panels, dx, defs, getLastKey, setLastKey){
+    panels.forEach(p=>{ p.x -= dx; });
+    panels.forEach(p=>{
+      if(p.x + this.bgPanelW <= 0){
+        const rightmost = panels.reduce((a,b)=> b.x > a.x ? b : a);
+        p.x = rightmost.x + this.bgPanelW;
+        p.key = this.pickKeyFrom(defs, rightmost.key);
+        setLastKey(p.key);
+        p.img.setTexture(p.key);
+      }
+      p.img.x = p.x;
+    });
   }
 
   spawnObstacle(){
@@ -536,16 +612,13 @@ class RunnerScene extends Phaser.Scene {
     const y = groundType ? this.groundY : this.postY;
 
     const img = this.add.image(x, y, def.key).setOrigin(0.5, 1).setDisplaySize(dispW, dispH);
-    this.obstacles.push({ img, x, type, hit:false, width: dispW, swingSeed: Math.random()*1000 });
+    this.obstacles.push({ img, x, type, hit:false, width: dispW });
   }
 
-  updateObstacleVisual(o, time){
-    if(o.type==='air'){
-      const sway = Math.sin((time||0)/300 + o.swingSeed) * 5;
-      o.img.x = o.x + sway;
-    } else {
-      o.img.x = o.x;
-    }
+  updateObstacleVisual(o){
+    // no sway: these are full ground-mounted post+sign images now, not a sign hanging from a
+    // wire, so swaying the whole sprite made the rigid post look like it was sliding around
+    o.img.x = o.x;
   }
 
   // Called once, the instant the run distance is covered: the endless-runner part of the
@@ -609,18 +682,10 @@ class RunnerScene extends Phaser.Scene {
     // scene. After it settles, we simply stop touching these and the last frame drawn stays put.
     if(!this.arriving || (this.finish && !this.finish.settled)){
       const scrollSpeed = this.arriving ? ARRIVAL_SPEED : gameState.speed;
-      const bgDx = scrollSpeed*dt;
-      this.bgPanels.forEach(p=>{ p.x -= bgDx; });
-      this.bgPanels.forEach(p=>{
-        if(p.x + this.bgPanelW <= 0){
-          const rightmost = this.bgPanels.reduce((a,b)=> b.x > a.x ? b : a);
-          p.x = rightmost.x + this.bgPanelW;
-          p.key = this.pickBgKey(rightmost.key);
-          lastBackgroundKey = p.key;
-          p.img.setTexture(p.key);
-        }
-        p.img.x = p.x;
-      });
+      const groundDx = scrollSpeed*dt;
+      const skyDx = groundDx * BG_PARALLAX_FACTOR; // distant layer scrolls slower — the parallax
+      this.updateBgPanelSet(this.bgTopPanels, skyDx, TOP_BACKGROUND_DEFS, ()=>lastTopBgKey, k=>lastTopBgKey=k);
+      this.updateBgPanelSet(this.bgBottomPanels, groundDx, BOTTOM_BACKGROUND_DEFS, ()=>lastBottomBgKey, k=>lastBottomBgKey=k);
     }
 
     this.rainGfx.clear();
@@ -656,7 +721,7 @@ class RunnerScene extends Phaser.Scene {
       for(let i=this.obstacles.length-1;i>=0;i--){
         const o = this.obstacles[i];
         o.x -= gameState.speed*dt;
-        this.updateObstacleVisual(o, time);
+        this.updateObstacleVisual(o);
 
         // Checked every frame while inside the zone (not just once on first contact) — a
         // one-shot check let the player clear an obstacle at the moment they first entered its
