@@ -22,7 +22,7 @@
     margin:0;padding:0;height:100%;
     background:var(--ink);
     font-family:'Inter',sans-serif;
-    display:flex;align-items:center;justify-content:center;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
     overflow:hidden;
   }
   #game-wrap{
@@ -43,6 +43,48 @@
     }
   }
   #game-wrap canvas{ display:block; width:100% !important; height:100% !important; }
+  /* On a touch device held in portrait, the 16:9 card ends up a small landscape strip with a lot
+     of dead space around it. Growing the card's height (width is untouched, so every gameplay
+     constant that depends on it — obstacle spawn margin, speed, spacing — stays exactly as tuned;
+     only the vertical framing changes, adding sky/headroom above the same gameplay) plus adding a
+     dedicated jump/duck button row *below* the card (not overlaid on top of it, so it never
+     covers gameplay or the win/game-over cards) brings the whole stack closer to a phone-like
+     shape than the fixed 16:9. Kept short of a full 9:16 stretch on purpose — the character, HUD
+     and obstacles are all fixed-pixel sized, so a much taller canvas makes them read as too small.
+     900/720 is a middle ground between the original 16:9 and the 1:1 tried earlier — see the
+     matching JS config.height. */
+  #mobile-controls{
+    display:none;
+    margin-top:16px;
+    gap:16px;
+  }
+  @media (pointer: coarse) and (orientation: portrait){
+    #game-wrap{
+      aspect-ratio: 720/900;
+      max-height: calc(100vh - 90px);
+    }
+    #mobile-controls{ display:flex; }
+  }
+  .pad-btn{
+    width:60px; height:60px; border-radius:50%;
+    background:rgba(243,233,214,0.1);
+    border:1.5px solid rgba(243,233,214,0.25);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; padding:0;
+    touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+    -webkit-user-select:none; user-select:none;
+  }
+  .pad-btn svg{ width:26px; height:26px; pointer-events:none; }
+  .pad-btn:active{ background:rgba(147,57,242,0.4); }
+  .loading-track{ width:200px; max-width:70%; height:10px; background:var(--paper); border-radius:6px; overflow:hidden; margin:16px 0 8px; flex-shrink:0; }
+  .loading-fill{ height:100%; width:0%; background:linear-gradient(180deg, var(--brand), var(--brand-deep)); border-radius:6px; }
+  .loading-pct{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:14px; color:var(--brand-deep); flex-shrink:0; }
+  #start-overlay .brand-lockup{ margin-bottom:20px; }
+  #start-overlay .brand-lockup svg{ height:24px; }
+  #start-overlay .brand-lockup .pipe{ height:18px; }
+  #start-overlay .brand-lockup .tag{ font-size:13px; }
+  #start-overlay h1{ font-size:32px; margin:0 0 22px; }
+  #start-overlay .btn{ font-size:17px; padding:15px 38px; border-radius:12px; }
   .display{font-family:'Space Grotesk',sans-serif;}
   .overlay{
     position:absolute; inset:0;
@@ -74,14 +116,6 @@
     padding:0 6px; border-radius:5px;
   }
   .overlay p{margin:2px 0 10px; font-size:13px; line-height:1.45; color:var(--muted); max-width:360px;}
-  .howto{ margin:4px 0 14px; display:flex; flex-direction:column; gap:8px; max-width:360px; flex-shrink:0; }
-  .howto-row{ display:flex; align-items:center; gap:10px; text-align:left; font-size:12.5px; line-height:1.4; color:var(--ink); }
-  .howto-key{
-    flex-shrink:0; width:26px; height:26px; border-radius:7px;
-    background:var(--paper); color:var(--brand-deep);
-    display:flex; align-items:center; justify-content:center;
-    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px;
-  }
   .btn{
     font-family:'Space Grotesk',sans-serif;
     font-weight:700;
@@ -158,9 +192,6 @@
     .brand-lockup .tag{ font-size:8px; }
     .overlay h1{ font-size:15px; margin:0 0 2px; }
     .overlay p{ display:none; }
-    .howto{ margin:1px 0 5px; gap:2px; }
-    .howto-row{ font-size:8.5px; line-height:1.2; gap:6px; }
-    .howto-key{ width:15px; height:15px; font-size:8px; border-radius:4px; }
     .stat-row{ gap:14px; margin-bottom:2px; }
     .stat .num{ font-size:15px; }
     .stat .lbl{ font-size:7px; }
@@ -171,6 +202,12 @@
     .btn{ font-size:11px; padding:5px 16px; border-radius:7px; box-shadow:0 2px 0 #4a2570; }
     .btn.secondary{ font-size:9px; padding:3px 10px; }
     .btn-stack{ gap:3px; margin-top:2px; }
+    #start-overlay .brand-lockup{ margin-bottom:8px; }
+    #start-overlay .brand-lockup svg{ height:16px; }
+    #start-overlay h1{ font-size:20px; margin:0 0 10px; }
+    #start-overlay .btn{ font-size:13px; padding:9px 22px; }
+    .loading-track{ width:150px; height:8px; margin:8px 0 5px; }
+    .loading-pct{ font-size:11px; }
   }
   /* The card itself already grows past 1200px wide (see #game-wrap above); scale the menu
      content up to match so it fills the extra room instead of sitting small in the middle
@@ -183,9 +220,6 @@
     .brand-lockup .tag{ font-size:14px; }
     .overlay h1{ font-size:38px; margin:0 0 8px; }
     .overlay p{ font-size:17px; max-width:480px; margin:2px 0 14px; }
-    .howto{ max-width:480px; gap:12px; margin:6px 0 20px; }
-    .howto-row{ font-size:16px; gap:14px; }
-    .howto-key{ width:34px; height:34px; font-size:16px; border-radius:9px; }
     .stat-row{ gap:34px; margin-bottom:11px; }
     .stat .num{ font-size:34px; }
     .stat .lbl{ font-size:13px; }
@@ -198,6 +232,12 @@
     .btn{ font-size:19px; padding:15px 38px; border-radius:13px; }
     .btn.secondary{ font-size:15px; padding:11px 24px; }
     .btn-stack{ gap:11px; margin-top:9px; }
+    #start-overlay .brand-lockup{ margin-bottom:26px; }
+    #start-overlay .brand-lockup svg{ height:32px; }
+    #start-overlay h1{ font-size:46px; margin:0 0 26px; }
+    #start-overlay .btn{ font-size:22px; padding:19px 46px; }
+    .loading-track{ width:280px; height:13px; margin:22px 0 10px; }
+    .loading-pct{ font-size:18px; }
   }
 </style>
 </head>
@@ -225,12 +265,12 @@
       <div class="tag">Courier Challenge</div>
     </div>
     <h1>Keep it <span class="accent">FRAGILE</span>-safe</h1>
-    <div class="howto">
-      <div class="howto-row"><span class="howto-key">&uarr;</span><span>Jump potholes, manholes, leaves &amp; scooters — <b>Space / &uarr;</b> or tap the top half</span></div>
-      <div class="howto-row"><span class="howto-key">&darr;</span><span>Duck under road signs — <b>&darr;</b> or tap the bottom half</span></div>
-      <div class="howto-row"><span class="howto-key">&bull;</span><span>Every hit lowers package condition — reach the parcel machine before it runs out</span></div>
-    </div>
     <button class="btn" id="start-btn">START DELIVERY</button>
+  </div>
+  <div id="loading-overlay" class="overlay hidden">
+    <h1 style="font-size:20px;">Loading delivery route&hellip;</h1>
+    <div class="loading-track"><div class="loading-fill" id="loading-fill"></div></div>
+    <div class="loading-pct" id="loading-pct">0%</div>
   </div>
   <div id="gameover-overlay" class="overlay hidden">
     <h1 style="color:#c94f4f">Package damaged</h1>
@@ -281,6 +321,14 @@
     </svg>
   </div>
 </div>
+<div id="mobile-controls">
+  <button class="pad-btn" id="duck-btn" aria-label="Duck">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M12 19l-6-6M12 19l6-6" stroke="#f3e9d6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button class="pad-btn" id="jump-btn" aria-label="Jump">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M12 19V5M12 5l-6 6M12 5l6 6" stroke="#f3e9d6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+</div>
 <script>
 const BRAND = 0x9339f2;
 const BRAND_GLOW = 0xc79cf5;
@@ -311,6 +359,15 @@ const DAMAGE = { ground: 30, air: 26 };
 const GRAVITY = 1600;
 const JUMP_VELOCITY = -620;
 
+// Matches the CSS breakpoint on #game-wrap: a touch phone held upright gets a taller logical
+// canvas (see config.height below) so the same fixed-pixel character/obstacle/HUD art reads
+// smaller against the extra headroom than it does at 16:9. PORTRAIT_OBJECT_SCALE bumps those
+// fixed sizes back up on portrait only, so they read the same size as before despite the taller
+// canvas — decided once at load, same as the rest of the game's sizing.
+const IS_PORTRAIT_LAYOUT = window.matchMedia('(pointer: coarse) and (orientation: portrait)').matches;
+const PORTRAIT_OBJECT_SCALE = IS_PORTRAIT_LAYOUT ? 1.2 : 1;
+const PORTRAIT_COURIER_SCALE = IS_PORTRAIT_LAYOUT ? 1.4 : 1;
+
 let gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:0, isJumping:false, isDucking:false };
 // Survive across restarts (the Phaser game instance gets destroyed/recreated, but these
 // top-level variables don't) so back-to-back runs don't show the same skyline/ground twice in a row.
@@ -320,8 +377,11 @@ let lastBottomBgKey = null;
 const OBSTACLE_DEFS = {
   ground: [
     { key:'obs_hole',    src:'assets/images/obstacles/bottom/hole.png',           targetH:32 },
-    { key:'obs_manhole', src:'assets/images/obstacles/bottom/manhole.png',        targetH:76 },
-    { key:'obs_leaves',  src:'assets/images/obstacles/bottom/pile-of-leaves.png', targetH:66 },
+    // fixedSize: exempt from PORTRAIT_OBJECT_SCALE — these two are intentionally smaller than
+    // their peers so they're easier to clear cleanly, and scaling them up on portrait like every
+    // other obstacle would undo that (68*1.2=81.6, bigger than the original pre-reduction 76).
+    { key:'obs_manhole', src:'assets/images/obstacles/bottom/manhole.png',        targetH:68, fixedSize:true },
+    { key:'obs_leaves',  src:'assets/images/obstacles/bottom/pile-of-leaves.png', targetH:59, fixedSize:true },
     { key:'obs_scooter', src:'assets/images/obstacles/bottom/scooter.png',        targetH:72 }
   ],
   air: [
@@ -382,6 +442,8 @@ class RunnerScene extends Phaser.Scene {
   constructor(){ super('runner'); }
 
   preload(){
+    this.load.on('progress', (value)=>setLoadingProgress(value));
+    this.load.on('complete', ()=>hideLoadingOverlay());
     OBSTACLE_DEFS.ground.forEach(d=>this.load.image(d.key, d.src));
     OBSTACLE_DEFS.air.forEach(d=>this.load.image(d.key, d.src));
     this.load.image(FINISH_DEF.key, FINISH_DEF.src);
@@ -398,6 +460,17 @@ class RunnerScene extends Phaser.Scene {
     // obstacles and the parcel machine keep the full shift
     this.courierY = h*GROUND_Y_RATIO + GROUND_Y_SHIFT/2;
     gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:this.courierY, isJumping:false, isDucking:false };
+
+    // Tiny generated confetti-fleck texture (no image asset needed) used for the arrival
+    // celebration once the parcel machine settles into place — see launchConfetti().
+    if(!this.textures.exists('confetti_particle')){
+      const cg = this.make.graphics({ x:0, y:0, add:false });
+      cg.fillStyle(0xffffff, 1);
+      cg.fillRect(0, 0, 6, 10);
+      cg.generateTexture('confetti_particle', 6, 10);
+      cg.destroy();
+    }
+    this.confettiEmitter = null;
 
     // Background is two independently-scrolling rows of full-image panels (not a single
     // repeating tile) so different skylines can appear within one run: each panel scrolls left
@@ -490,7 +563,7 @@ class RunnerScene extends Phaser.Scene {
 
     // both atlases share the same 256px frame height, so this is the shared baseline scale;
     // per-animation heightRatio then tunes each pose relative to it (see COURIER_ANIMS)
-    const runnerH = 133; // 116 * 1.15
+    const runnerH = 133 * PORTRAIT_COURIER_SCALE; // 116 * 1.15, plus the portrait size bump
     const runDef = COURIER_ANIMS.run;
     const firstFrameName = `${runDef.prefix}${String(runDef.start).padStart(3,'0')}${runDef.suffix}`;
     const frame = this.textures.get(runDef.atlasKey).get(firstFrameName);
@@ -604,8 +677,9 @@ class RunnerScene extends Phaser.Scene {
     const type = groundType ? 'ground' : 'air';
 
     const tex = this.textures.get(def.key).getSourceImage();
-    const scale = def.targetH / tex.height;
-    const dispW = tex.width*scale, dispH = def.targetH;
+    const targetH = def.targetH * (def.fixedSize ? 1 : PORTRAIT_OBJECT_SCALE);
+    const scale = targetH / tex.height;
+    const dispW = tex.width*scale, dispH = targetH;
     const x = w + dispW/2 + 20;
     // ground obstacles sit on the purple band's top edge; overhead obstacle posts land
     // on the grey curb above it, so they read as posts planted on the curb
@@ -634,8 +708,9 @@ class RunnerScene extends Phaser.Scene {
     this.playerContainer.y = this.courierY;
 
     const tex = this.textures.get(FINISH_DEF.key).getSourceImage();
-    const scale = FINISH_DEF.targetH / tex.height;
-    const dispW = tex.width*scale, dispH = FINISH_DEF.targetH;
+    const finishTargetH = FINISH_DEF.targetH * PORTRAIT_OBJECT_SCALE;
+    const scale = finishTargetH / tex.height;
+    const dispW = tex.width*scale, dispH = finishTargetH;
     const startX = w + dispW/2 + 20; // enters from off-screen, same as any obstacle
     const restX = w - dispW/2 - 40;  // fixed resting spot, fully on screen near the right edge
     const img = this.add.image(startX, this.groundY, FINISH_DEF.key).setOrigin(0.5,1).setDisplaySize(dispW,dispH);
@@ -650,6 +725,7 @@ class RunnerScene extends Phaser.Scene {
       if(this.finish.x <= this.finish.restX){
         this.finish.x = this.finish.restX;
         this.finish.settled = true;
+        this.launchConfetti();
       }
       this.finish.img.x = this.finish.x;
       return; // the courier waits for the machine to settle before it starts walking
@@ -660,6 +736,30 @@ class RunnerScene extends Phaser.Scene {
       this.finishTriggered = true;
       this.endGame(true);
     }
+  }
+
+  // Celebration burst the instant the parcel machine settles into place — right as the courier
+  // starts walking toward it. Built from a generated texture (no image asset), so it works even
+  // if the client's real confetti/firework art from Makko AI never materializes; swapping in a
+  // sprite-based effect later only means changing what's added inside this method.
+  launchConfetti(){
+    if(this.confettiEmitter) return;
+    const colors = [BRAND, 0xe7f43b, 0xffffff, 0x643395, 0xc79cf5];
+    this.confettiEmitter = this.add.particles(0, -20, 'confetti_particle', {
+      x: { min: this.scale.width*0.3, max: this.scale.width*0.95 },
+      y: -20,
+      lifespan: 2200,
+      speedY: { min: 120, max: 260 },
+      speedX: { min: -60, max: 60 },
+      gravityY: 220,
+      rotate: { min: 0, max: 360 },
+      scale: { start: 1, end: 0.6 },
+      quantity: 4,
+      frequency: 40,
+      tint: colors
+    }).setDepth(15);
+    this.time.delayedCall(1600, ()=>{ if(this.confettiEmitter) this.confettiEmitter.stop(); });
+    this.time.delayedCall(4000, ()=>{ if(this.confettiEmitter){ this.confettiEmitter.destroy(); this.confettiEmitter = null; } });
   }
 
   update(time, delta){
@@ -796,21 +896,20 @@ class RunnerScene extends Phaser.Scene {
   }
 }
 
+// Matches the CSS breakpoint above (pointer:coarse + portrait): a touch phone held upright gets
+// a taller 720x900 logical canvas instead of 16:9 (720x405). Width is identical either way, so
+// obstacle spawn margin, speed, and spacing are all untouched; only the vertical framing changes.
 const config = {
   type: Phaser.AUTO,
   parent: 'phaser-container',
   width: 720,
-  height: 405,
+  height: IS_PORTRAIT_LAYOUT ? 900 : 405,
   backgroundColor: '#150c26',
   scale:{ mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
   scene: [RunnerScene]
 };
 
 let game = null;
-
-function isTouchDevice(){
-  return window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
-}
 
 // --- Fullscreen toggle ---
 // No browser lets a page force-rotate the physical device, and iOS Safari doesn't support the
@@ -829,24 +928,68 @@ bindTap(document.getElementById('fullscreen-btn'), async function(){
     if(document.fullscreenElement){
       await document.exitFullscreen();
     } else {
+      // No orientation lock here: portrait now has its own comfortable taller layout with
+      // on-screen buttons (see IS_PORTRAIT_LAYOUT above), so forcing landscape on fullscreen
+      // would fight that instead of just making the existing layout bigger.
       await document.documentElement.requestFullscreen();
-      if(isTouchDevice() && screen.orientation && screen.orientation.lock){
-        try{ await screen.orientation.lock('landscape'); }catch(e){}
-      }
     }
   }catch(e){
     // Fullscreen unsupported or denied — no fallback needed, the game works windowed too.
   }
 });
 
+// On-screen jump/duck buttons (shown below the canvas on touch devices in portrait — see CSS)
+// drive the same scene methods the keyboard/tap-canvas controls already use. Wired with
+// pointerdown/up (not click) so duck can be held down like the canvas tap-and-hold gesture.
+function getRunnerScene(){
+  return game ? game.scene.getScene('runner') : null;
+}
+const jumpBtn = document.getElementById('jump-btn');
+const duckBtn = document.getElementById('duck-btn');
+if(jumpBtn){
+  jumpBtn.addEventListener('pointerdown', (e)=>{
+    e.preventDefault();
+    const scene = getRunnerScene();
+    if(scene) scene.tryJump();
+  });
+}
+if(duckBtn){
+  duckBtn.addEventListener('pointerdown', (e)=>{
+    e.preventDefault();
+    const scene = getRunnerScene();
+    if(scene) scene.startDuck();
+  });
+  ['pointerup','pointerleave','pointercancel'].forEach(evt=>{
+    duckBtn.addEventListener(evt, ()=>{
+      const scene = getRunnerScene();
+      if(scene) scene.endDuck();
+    });
+  });
+}
+
+// --- Loading progress (asset loads can take a while on slow connections) ---
+function showLoadingOverlay(){
+  document.getElementById('start-overlay').classList.add('hidden');
+  document.getElementById('gameover-overlay').classList.add('hidden');
+  document.getElementById('win-overlay').classList.add('hidden');
+  setLoadingProgress(0);
+  document.getElementById('loading-overlay').classList.remove('hidden');
+}
+function setLoadingProgress(frac){
+  const pct = Math.round(frac*100);
+  document.getElementById('loading-fill').style.width = pct+'%';
+  document.getElementById('loading-pct').textContent = pct+'%';
+}
+function hideLoadingOverlay(){
+  document.getElementById('loading-overlay').classList.add('hidden');
+}
+
 function startGame(){
   if(typeof Phaser === 'undefined'){
     alert('The game engine could not load — check your internet connection and reload the page. If this keeps happening, try opening the page directly in Safari rather than a preview/share view.');
     return;
   }
-  document.getElementById('start-overlay').classList.add('hidden');
-  document.getElementById('gameover-overlay').classList.add('hidden');
-  document.getElementById('win-overlay').classList.add('hidden');
+  showLoadingOverlay();
   if(game){ game.destroy(true); }
   game = new Phaser.Game(config);
 }
@@ -854,6 +997,7 @@ function startGame(){
 function goHome(){
   document.getElementById('gameover-overlay').classList.add('hidden');
   document.getElementById('win-overlay').classList.add('hidden');
+  document.getElementById('loading-overlay').classList.add('hidden');
   document.getElementById('start-overlay').classList.remove('hidden');
   if(game){ game.destroy(true); game = null; }
 }
