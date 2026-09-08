@@ -85,6 +85,7 @@
   #start-overlay .brand-lockup .tag{ font-size:13px; }
   #start-overlay h1{ font-size:32px; margin:0 0 22px; }
   #start-overlay .btn{ font-size:17px; padding:15px 38px; border-radius:12px; }
+  #start-endless-btn{ margin-top:10px; }
   .display{font-family:'Space Grotesk',sans-serif;}
   .overlay{
     position:absolute; inset:0;
@@ -100,6 +101,7 @@
   }
   .overlay.hidden{display:none;}
   .win-step.step-hidden{display:none;}
+  .stat.stat-hidden{display:none;}
   .win-step{ display:flex; flex-direction:column; align-items:center; }
   .brand-lockup{ display:flex; align-items:center; gap:10px; margin-bottom:10px; opacity:0.95; flex-shrink:0; }
   .brand-lockup svg{ height:18px; width:auto; }
@@ -206,6 +208,7 @@
     #start-overlay .brand-lockup svg{ height:16px; }
     #start-overlay h1{ font-size:20px; margin:0 0 10px; }
     #start-overlay .btn{ font-size:13px; padding:9px 22px; }
+    #start-endless-btn{ margin-top:5px; }
     .loading-track{ width:150px; height:8px; margin:8px 0 5px; }
     .loading-pct{ font-size:11px; }
   }
@@ -266,6 +269,7 @@
     </div>
     <h1>Keep it <span class="accent">FRAGILE</span>-safe</h1>
     <button class="btn" id="start-btn">START DELIVERY</button>
+    <button class="btn secondary" id="start-endless-btn" hidden>ENDLESS MODE</button>
   </div>
   <div id="loading-overlay" class="overlay hidden">
     <h1 style="font-size:20px;">Loading delivery route&hellip;</h1>
@@ -275,7 +279,10 @@
   <div id="gameover-overlay" class="overlay hidden">
     <h1 style="color:#c94f4f">Package damaged</h1>
     <p>The box didn't make it this time. Give it another go.</p>
-    <div class="stat-row"><div class="stat"><div class="num" id="go-distance">0m</div><div class="lbl">Distance</div></div></div>
+    <div class="stat-row">
+      <div class="stat"><div class="num" id="go-distance">0m</div><div class="lbl">Distance</div></div>
+      <div class="stat stat-hidden" id="go-best-stat"><div class="num" id="go-best">0m</div><div class="lbl">Endless Best</div></div>
+    </div>
     <div class="btn-stack">
       <button class="btn" id="retry-btn">TRY AGAIN</button>
       <button class="btn secondary" id="home-btn-go">BACK TO HOME</button>
@@ -304,6 +311,7 @@
       <h1>Play <span class="accent">again?</span></h1>
       <div class="btn-stack">
         <button class="btn" id="play-again-btn">PLAY AGAIN</button>
+        <button class="btn secondary" id="endless-btn">ENDLESS MODE</button>
         <button class="btn secondary" id="home-btn-win">BACK TO HOME</button>
       </div>
     </div>
@@ -461,6 +469,10 @@ class RunnerScene extends Phaser.Scene {
     // obstacles and the parcel machine keep the full shift
     this.courierY = h*GROUND_Y_RATIO + GROUND_Y_SHIFT/2;
     gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:this.courierY, isJumping:false, isDucking:false };
+    // Consumed once per game creation — startGame()/startEndlessGame() set pendingEndless
+    // immediately before `new Phaser.Game(config)`, so this always reflects the button that
+    // was actually pressed, never a stale value from an earlier run.
+    this.endless = pendingEndless;
 
     // Tiny generated confetti-fleck texture (no image asset needed) used for the arrival
     // celebration once the parcel machine settles into place — see launchConfetti().
@@ -537,6 +549,14 @@ class RunnerScene extends Phaser.Scene {
     this.durLabel = this.add.text(this.barX, this.barY-13*hs, 'PACKAGE CONDITION',{ fontFamily:'Inter', fontSize:(9*hs)+'px', color:'#b9a9d6', letterSpacing:1 }).setDepth(HUD_DEPTH);
     this.barBg = this.add.graphics().setDepth(HUD_DEPTH);
     this.barFill = this.add.graphics().setDepth(HUD_DEPTH);
+
+    // Endless mode never reaches the parcel machine, so this badge is the only on-screen sign
+    // the player is in it rather than a normal timed run.
+    if(this.endless){
+      this.add.text(w-16*hs, 12*hs+50*hs+8*hs, 'ENDLESS MODE', {
+        fontFamily:'Space Grotesk', fontSize:(11*hs)+'px', fontStyle:'700', color:'#e7f43b'
+      }).setOrigin(1,0).setDepth(HUD_DEPTH);
+    }
 
     this.input.keyboard.on('keydown-SPACE', ()=>this.tryJump());
     this.input.keyboard.on('keydown-UP', ()=>this.tryJump());
@@ -820,7 +840,7 @@ class RunnerScene extends Phaser.Scene {
       // constant spacing throughout — this used to shrink toward a 480ms floor as distance grew,
       // which bunched obstacles closer together later in a long run than at the start
       const interval = this.spawnInterval * 2;
-      if(this.spawnTimer > interval && gameState.distance < LAST_OBSTACLE_DISTANCE){
+      if(this.spawnTimer > interval && (this.endless || gameState.distance < LAST_OBSTACLE_DISTANCE)){
         this.spawnTimer = 0;
         this.spawnObstacle();
       }
@@ -858,7 +878,7 @@ class RunnerScene extends Phaser.Scene {
       }
     }
 
-    if(!this.arriving && gameState.distance >= LEVEL_DISTANCE){
+    if(!this.endless && !this.arriving && gameState.distance >= LEVEL_DISTANCE){
       this.startArrival(w);
     }
     this.updateFinish(dt);
@@ -888,15 +908,30 @@ class RunnerScene extends Phaser.Scene {
   endGame(won){
     if(!gameState.running) return;
     gameState.running = false;
+    // Snapshot now, not inside the delayed callback: `gameState` is reassigned by the next
+    // create(), so reading it 250ms later would show whatever run is live by then instead of
+    // the one that just ended.
+    const finalDistance = gameState.distance;
+    const finalDurability = gameState.durability;
+    const wasEndless = this.endless;
+    lastRunWasEndless = wasEndless;
     this.time.delayedCall(250, ()=>{
       if(won){
-        document.getElementById('win-distance').textContent = Math.floor(gameState.distance)+'m';
-        document.getElementById('win-condition').textContent = Math.round(gameState.durability)+'%';
+        document.getElementById('win-distance').textContent = Math.floor(finalDistance)+'m';
+        document.getElementById('win-condition').textContent = Math.round(finalDurability)+'%';
         document.getElementById('win-step-1').classList.remove('step-hidden');
         document.getElementById('win-step-2').classList.add('step-hidden');
         document.getElementById('win-overlay').classList.remove('hidden');
       } else {
-        document.getElementById('go-distance').textContent = Math.floor(gameState.distance)+'m';
+        document.getElementById('go-distance').textContent = Math.floor(finalDistance)+'m';
+        const goBestStat = document.getElementById('go-best-stat');
+        if(wasEndless){
+          const best = updateEndlessBest(finalDistance);
+          document.getElementById('go-best').textContent = Math.floor(best)+'m';
+          goBestStat.classList.remove('stat-hidden');
+        } else {
+          goBestStat.classList.add('stat-hidden');
+        }
         document.getElementById('gameover-overlay').classList.remove('hidden');
       }
     });
@@ -991,11 +1026,51 @@ function hideLoadingOverlay(){
   document.getElementById('loading-overlay').classList.add('hidden');
 }
 
+// Read once by RunnerScene.create() into this.endless right before each game starts — set here
+// rather than passed as a startGame() parameter because bindTap's handlers are always called
+// with the triggering DOM event, which would otherwise be mistaken for a truthy "endless" flag.
+let pendingEndless = false;
+// Set by endGame() to whichever mode the run that just ended was in, so the game-over screen's
+// "Try Again" button can restart the same mode instead of always defaulting to normal.
+let lastRunWasEndless = false;
+
+const ENDLESS_BEST_KEY = 'venipak_endless_best_distance';
+function getEndlessBest(){
+  let best = 0;
+  try{ best = parseFloat(localStorage.getItem(ENDLESS_BEST_KEY)) || 0; }catch(e){}
+  return best;
+}
+// Called once per endless crash. Reads the stored best, bumps it if this run beat it, and
+// always returns the number to display — so the game-over screen shows the record either way.
+function updateEndlessBest(distance){
+  let best = getEndlessBest();
+  if(distance > best){
+    best = distance;
+    try{ localStorage.setItem(ENDLESS_BEST_KEY, String(best)); }catch(e){}
+  }
+  return best;
+}
+
 function startGame(){
   if(typeof Phaser === 'undefined'){
     alert('The game engine could not load — check your internet connection and reload the page. If this keeps happening, try opening the page directly in Safari rather than a preview/share view.');
     return;
   }
+  pendingEndless = false;
+  showLoadingOverlay();
+  if(game){ game.destroy(true); }
+  game = new Phaser.Game(config);
+}
+
+// Same as startGame(), but skips the arrival/finish sequence and never stops spawning
+// obstacles — the run just continues until the player crashes. Reached only from the win
+// screen's "Play again?" step, next to the normal Play Again button.
+function startEndlessGame(){
+  if(typeof Phaser === 'undefined'){
+    alert('The game engine could not load — check your internet connection and reload the page. If this keeps happening, try opening the page directly in Safari rather than a preview/share view.');
+    return;
+  }
+  pendingEndless = true;
   showLoadingOverlay();
   if(game){ game.destroy(true); }
   game = new Phaser.Game(config);
@@ -1027,9 +1102,21 @@ function bindTap(el, handler){
   });
 }
 
+// Only shown once the player has an endless score on record — a first-time visitor with
+// nothing stored has no reason to see a mode they haven't unlocked by playing yet.
+if(getEndlessBest() > 0){
+  document.getElementById('start-endless-btn').hidden = false;
+}
+
 bindTap(document.getElementById('start-btn'), startGame);
-bindTap(document.getElementById('retry-btn'), startGame);
+bindTap(document.getElementById('start-endless-btn'), startEndlessGame);
+// Retries whichever mode the run that just crashed was in — endless stays endless, normal
+// stays normal — rather than always dropping back to the normal mode.
+bindTap(document.getElementById('retry-btn'), function(){
+  if(lastRunWasEndless){ startEndlessGame(); } else { startGame(); }
+});
 bindTap(document.getElementById('play-again-btn'), startGame);
+bindTap(document.getElementById('endless-btn'), startEndlessGame);
 bindTap(document.getElementById('home-btn-go'), goHome);
 bindTap(document.getElementById('home-btn-win'), goHome);
 bindTap(document.getElementById('win-next-btn'), function(){
