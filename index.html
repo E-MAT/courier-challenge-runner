@@ -366,8 +366,8 @@
 // --- Edit me: the win screen's app promo. ---
 // Leave a URL empty and that badge simply renders as a non-clickable image. Which badge and
 // which line of copy appear depends on the device — see detectMobileOS() further down.
-const APP_STORE_URL = '';
-const GOOGLE_PLAY_URL = '';
+const APP_STORE_URL = 'https://apps.apple.com/';
+const GOOGLE_PLAY_URL = 'https://play.google.com/';
 const APP_PROMO_TEXT = {
   ios: 'Download Venipak app on iOS',
   android: 'Download Venipak app on Android',
@@ -949,8 +949,15 @@ class RunnerScene extends Phaser.Scene {
 
     this.updateHud();
 
+    // A damaged package makes the courier rock side to side as feedback — the more damage taken,
+    // the wider the swing (at full condition it's exactly zero, which is why it only shows up
+    // after a hit). It's driven by the clock, so it never settles on its own: during the scripted
+    // arrival, where the courier walks up to the machine and then stands still, that endless rock
+    // reads as a glitch rather than as damage. Ease it back upright there instead of snapping.
     const pct = gameState.durability/DURABILITY_MAX;
-    this.playerContainer.rotation = (1-pct)*0.06*Math.sin(time/130);
+    this.playerContainer.rotation = this.arriving
+      ? Phaser.Math.Linear(this.playerContainer.rotation, 0, Math.min(1, dt*8))
+      : (1-pct)*0.06*Math.sin(time/130);
   }
 
   updateHud(){
