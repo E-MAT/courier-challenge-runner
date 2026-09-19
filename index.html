@@ -151,6 +151,47 @@
   /* a badge whose store URL hasn't been filled in yet shouldn't pretend to be clickable */
   .app-badges a:not([href]){ cursor:default; }
   .app-badges img{ height:36px; width:auto; display:block; }
+  /* The HUD is DOM rather than something drawn into the Phaser canvas: the canvas renders at a
+     fixed 720px-wide framebuffer and CSS stretches it to fill the card (1.67x at a 1200px card,
+     more again on a 2x display), which visibly softened the text and bar. As real elements these
+     stay crisp at any size. Everything below is expressed in em so the whole HUD scales with the
+     card, the way the canvas-drawn version used to — 1em here is the old design's 10px, so the
+     font-size rules mirror #game-wrap's own width rules. */
+  #hud{
+    position:absolute; top:1.2em; left:1.2em; right:1.2em; height:5em;
+    z-index:6; pointer-events:none;
+    font-size:calc(min(100vw, 720px) / 72);
+    background:rgba(20,11,34,0.6);
+    border:1px solid rgba(147,57,242,0.3);
+    border-radius:1em;
+    display:flex; align-items:center;
+    padding:0 1.4em;
+  }
+  #hud.hud-hidden{ display:none; }
+  .hud-label{
+    font-family:'Inter',sans-serif; font-size:0.9em; line-height:1.2;
+    text-transform:uppercase; letter-spacing:0.1em; color:#b9a9d6; white-space:nowrap;
+  }
+  .hud-dist-num{
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:2.2em; line-height:1.1;
+    color:#f3e9d6;
+  }
+  .hud-cond{
+    position:absolute; left:50%; transform:translateX(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:0.35em;
+  }
+  .hud-bar{
+    width:26em; max-width:100%; height:1.4em; border-radius:0.8em;
+    background:rgba(20,11,34,0.6); overflow:hidden;
+  }
+  .hud-bar-fill{ height:100%; width:100%; border-radius:0.8em; background:var(--brand); }
+  @media (min-width: 1200px){
+    #hud{ font-size:calc(min(75vw, 1200px) / 72); }
+  }
+  @media (pointer: coarse) and (orientation: portrait){
+    /* matches the old PORTRAIT_HUD_SCALE: the strip reads thin against the taller portrait canvas */
+    #hud{ font-size:calc(min(100vw, 720px) / 72 * 1.35); }
+  }
   #hint{ position:absolute; bottom:8px; left:0; right:0; text-align:center; color:rgba(122,106,153,0.6); font-size:10.5px; letter-spacing:0.03em; z-index:5; pointer-events:none; }
   #watermark{ position:absolute; bottom:10px; right:14px; z-index:6; opacity:0.55; pointer-events:none; }
   #watermark svg{ height:13px; width:auto; display:block; }
@@ -290,6 +331,16 @@
       <button class="btn secondary" id="home-btn-win">BACK TO HOME</button>
     </div>
   </div>
+  <div id="hud">
+    <div class="hud-dist">
+      <div class="hud-dist-num" id="hud-distance">0 m</div>
+      <div class="hud-label">Distance</div>
+    </div>
+    <div class="hud-cond">
+      <div class="hud-label">Package condition</div>
+      <div class="hud-bar"><div class="hud-bar-fill" id="hud-bar-fill"></div></div>
+    </div>
+  </div>
   <div id="hint"></div>
   <div id="watermark">
     <svg width="99" height="19" viewBox="0 0 148 28" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -364,7 +415,6 @@ const JUMP_VELOCITY = -620;
 const IS_PORTRAIT_LAYOUT = window.matchMedia('(pointer: coarse) and (orientation: portrait)').matches;
 const PORTRAIT_OBJECT_SCALE = IS_PORTRAIT_LAYOUT ? 1.2 : 1;
 const PORTRAIT_COURIER_SCALE = IS_PORTRAIT_LAYOUT ? 1.4 : 1;
-const PORTRAIT_HUD_SCALE = IS_PORTRAIT_LAYOUT ? 1.35 : 1;
 
 let gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:0, isJumping:false, isDucking:false };
 // Survive across restarts (the Phaser game instance gets destroyed/recreated, but these
@@ -534,31 +584,11 @@ class RunnerScene extends Phaser.Scene {
     this.finishTriggered = false;
     this.arriving = false;
 
-    // The whole top HUD strip (background panel, logo, distance readout, condition bar) is
-    // laid out from the same fixed-pixel numbers on every canvas size. On portrait's taller
-    // canvas that strip reads thin/small relative to the extra headroom, so PORTRAIT_HUD_SCALE
-    // uniformly scales every one of those numbers (position and size alike) on portrait only —
-    // landscape/desktop keeps the exact original numbers since the scale is 1 there.
-    const hs = PORTRAIT_HUD_SCALE;
-    const HUD_DEPTH = 20;
-    this.hudBg = this.add.graphics().setDepth(HUD_DEPTH);
-    this.hudBg.fillStyle(0x140b22, 0.6);
-    this.hudBg.fillRoundedRect(12*hs,12*hs,w-24*hs,50*hs,10*hs);
-    this.hudBg.lineStyle(1,0x9339f2,0.3);
-    this.hudBg.strokeRoundedRect(12*hs,12*hs,w-24*hs,50*hs,10*hs);
-
-    this.hudLogo = this.add.graphics().setDepth(HUD_DEPTH);
-    this.hudLogo.fillStyle(BRAND,1);
-    this.hudLogo.fillRoundedRect(22*hs,24*hs,26*hs,26*hs,6*hs);
-    this.hudLogoText = this.add.text(35*hs,37*hs,'V',{fontFamily:'Space Grotesk',fontSize:(16*hs)+'px',fontStyle:'700',color:'#ffffff'}).setOrigin(0.5).setDepth(HUD_DEPTH);
-
-    this.distText = this.add.text(58*hs,18*hs,'0 m',{ fontFamily:'Space Grotesk', fontSize:(22*hs)+'px', fontStyle:'700', color:'#f3e9d6' }).setDepth(HUD_DEPTH);
-    this.distLabel = this.add.text(58*hs,42*hs,'DISTANCE',{ fontFamily:'Inter', fontSize:(9*hs)+'px', color:'#b9a9d6', letterSpacing:1 }).setDepth(HUD_DEPTH);
-
-    this.barX = w*0.5; this.barY = 26*hs; this.barW = w*0.36; this.barH = 14*hs;
-    this.durLabel = this.add.text(this.barX, this.barY-13*hs, 'PACKAGE CONDITION',{ fontFamily:'Inter', fontSize:(9*hs)+'px', color:'#b9a9d6', letterSpacing:1 }).setDepth(HUD_DEPTH);
-    this.barBg = this.add.graphics().setDepth(HUD_DEPTH);
-    this.barFill = this.add.graphics().setDepth(HUD_DEPTH);
+    // The HUD lives in the DOM (see #hud) rather than being drawn here, so it stays sharp when
+    // the canvas is scaled up; this scene only feeds it values — see updateHud().
+    this.hudDistanceEl = document.getElementById('hud-distance');
+    this.hudBarFillEl = document.getElementById('hud-bar-fill');
+    this.updateHud();
 
     this.input.keyboard.on('keydown-SPACE', ()=>this.tryJump());
     this.input.keyboard.on('keydown-UP', ()=>this.tryJump());
@@ -836,7 +866,6 @@ class RunnerScene extends Phaser.Scene {
       // this long would spend most of its distance still visibly accelerating
       gameState.distance += gameState.speed*dt*0.5;
     }
-    this.distText.setText(Math.floor(gameState.distance)+' m');
 
     // "the camera stops" once the parcel machine has settled into place — up to that point
     // the background keeps scrolling (at the calmer arrival pace once arriving begins), so the
@@ -918,16 +947,17 @@ class RunnerScene extends Phaser.Scene {
     }
     this.updateFinish(dt);
 
-    this.barBg.clear();
-    this.barBg.fillStyle(0x140b22,0.6);
-    this.barBg.fillRoundedRect(this.barX-this.barW/2,this.barY,this.barW,this.barH,8);
-    this.barFill.clear();
-    const pct = gameState.durability/DURABILITY_MAX;
-    const col = pct>0.5 ? BRAND : (pct>0.25 ? 0xd9a548 : 0x7a2e2e);
-    this.barFill.fillStyle(col,1);
-    this.barFill.fillRoundedRect(this.barX-this.barW/2,this.barY,this.barW*pct,this.barH,8);
+    this.updateHud();
 
+    const pct = gameState.durability/DURABILITY_MAX;
     this.playerContainer.rotation = (1-pct)*0.06*Math.sin(time/130);
+  }
+
+  updateHud(){
+    const pct = gameState.durability/DURABILITY_MAX;
+    this.hudDistanceEl.textContent = Math.floor(gameState.distance)+' m';
+    this.hudBarFillEl.style.width = (pct*100)+'%';
+    this.hudBarFillEl.style.background = pct>0.5 ? '#9339f2' : (pct>0.25 ? '#d9a548' : '#7a2e2e');
   }
 
   applyDamage(type){
