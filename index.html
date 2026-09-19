@@ -33,6 +33,10 @@
     box-shadow:0 24px 70px rgba(0,0,0,0.65), 0 0 0 1px rgba(147,57,242,0.15);
     border-radius:16px;
     overflow:hidden;
+    /* Ducking means press-and-hold, which a browser otherwise reads as "select this" or
+       "long-press for a menu" — both of which interrupt the hold. */
+    -webkit-touch-callout:none;
+    -webkit-user-select:none; user-select:none;
   }
   /* Below 1200px this stays capped at 720px as before. From 1200px up, let the card grow with
      the viewport (up to a 1200px ceiling so it doesn't get absurd on ultrawide monitors) instead
@@ -73,8 +77,10 @@
     cursor:pointer; padding:0;
     touch-action:manipulation; -webkit-tap-highlight-color:transparent;
     -webkit-user-select:none; user-select:none;
+    /* the duck button is held down, so suppress the long-press callout and image drag too */
+    -webkit-touch-callout:none;
   }
-  .pad-btn svg{ width:26px; height:26px; pointer-events:none; }
+  .pad-btn svg{ width:26px; height:26px; pointer-events:none; -webkit-user-drag:none; }
   .pad-btn:active{ background:rgba(147,57,242,0.4); }
   .loading-track{ width:200px; max-width:70%; height:10px; background:var(--paper); border-radius:6px; overflow:hidden; margin:16px 0 8px; flex-shrink:0; }
   .loading-fill{ height:100%; width:0%; background:linear-gradient(180deg, var(--brand), var(--brand-deep)); border-radius:6px; }
@@ -242,6 +248,31 @@
     #start-overlay .btn{ font-size:13px; padding:9px 22px; }
     .loading-track{ width:150px; height:8px; margin:8px 0 5px; }
     .loading-pct{ font-size:11px; }
+  }
+  /* The compact sizes above exist for the short 16:9 strip a narrow window still gets. A portrait
+     phone no longer has that shape — its card is 720:900, roughly twice as tall — so the end
+     screens there were left tiny with most of the card empty. Scale them back up for that case
+     only; this block sits after the one above so it wins, and is scoped to the two end screens so
+     the start and loading screens keep their own tuning. */
+  @media (pointer: coarse) and (orientation: portrait){
+    #win-overlay, #gameover-overlay{ padding:12px 18px; }
+    #win-overlay h1, #gameover-overlay h1{ font-size:26px; margin:0 0 10px; }
+    #win-overlay .stat-row, #gameover-overlay .stat-row{ gap:22px; margin-bottom:10px; }
+    #win-overlay .stat .num, #gameover-overlay .stat .num{ font-size:26px; }
+    #win-overlay .stat .lbl, #gameover-overlay .stat .lbl{ font-size:11px; }
+    #win-overlay .btn, #gameover-overlay .btn{ font-size:16px; padding:11px 28px; border-radius:10px; box-shadow:0 4px 0 #4a2570; }
+    #win-overlay .btn.secondary, #gameover-overlay .btn.secondary{ font-size:13px; padding:8px 18px; box-shadow:none; }
+    #win-overlay .btn-stack, #gameover-overlay .btn-stack{ gap:9px; margin-top:7px; }
+    #win-overlay .app-promo{ gap:8px; margin:0 0 18px; }
+    #win-overlay .app-promo-text{ font-size:14px; max-width:290px; }
+    #win-overlay .app-badges{ gap:10px; }
+    #win-overlay .app-badges img{ height:38px; }
+    #start-overlay .brand-lockup{ margin-bottom:18px; }
+    #start-overlay .brand-lockup svg{ height:26px; }
+    #start-overlay .brand-lockup .pipe{ height:20px; }
+    #start-overlay .brand-lockup .tag{ font-size:13px; }
+    #start-overlay h1{ font-size:30px; margin:0 0 20px; }
+    #start-overlay .btn{ font-size:18px; padding:14px 34px; border-radius:11px; box-shadow:0 4px 0 #4a2570; }
   }
   /* The card itself already grows past 1200px wide (see #game-wrap above); scale the menu
      content up to match so it fills the extra room instead of sitting small in the middle
@@ -1007,6 +1038,15 @@ const config = {
 };
 
 let game = null;
+
+// Holding a control down — the duck button, or tap-and-hold on the canvas — is a press the
+// browser would otherwise answer with a context menu (long-press on touch and touch emulation,
+// right-click on desktop), which cancels the hold mid-duck. The game has no use for a context
+// menu over the play area, so suppress it on the card and on the button row below it.
+['game-wrap','mobile-controls'].forEach(function(id){
+  const el = document.getElementById(id);
+  if(el) el.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+});
 
 // --- Fullscreen toggle ---
 // No browser lets a page force-rotate the physical device, and iOS Safari doesn't support the
