@@ -99,8 +99,6 @@
     overflow-y:auto;
   }
   .overlay.hidden{display:none;}
-  .win-step.step-hidden{display:none;}
-  .win-step{ display:flex; flex-direction:column; align-items:center; }
   .brand-lockup{ display:flex; align-items:center; gap:10px; margin-bottom:10px; opacity:0.95; flex-shrink:0; }
   .brand-lockup svg{ height:18px; width:auto; }
   .brand-lockup .pipe{ width:1px; height:14px; background:rgba(100,51,149,0.25); }
@@ -144,20 +142,15 @@
   .stat{text-align:center;}
   .stat .num{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:26px; color:var(--ink);}
   .stat .lbl{font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted);}
-  .coupon{
-    margin-top:2px; border:1.5px dashed var(--brand); border-radius:12px;
-    padding:10px 22px; background:var(--paper);
-    display:flex; flex-direction:column; align-items:center; gap:4px;
-    position:relative; flex-shrink:0;
-  }
-  .coupon::before, .coupon::after{
-    content:''; position:absolute; width:14px; height:14px; border-radius:50%;
-    background:var(--brand-pale); top:50%; transform:translateY(-50%);
-  }
-  .coupon::before{ left:-7px; } .coupon::after{ right:-7px; }
-  .coupon .code{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:24px; letter-spacing:0.06em; color:var(--brand-deep); }
-  .coupon .sub{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em;}
-  .copy-note{font-size:10.5px; color:var(--muted); margin-top:2px; height:12px;}
+  .app-promo{ display:flex; flex-direction:column; align-items:center; gap:8px; margin:2px 0 18px; flex-shrink:0; }
+  .app-promo-text{ font-size:12.5px; color:var(--ink); font-weight:600; max-width:300px; }
+  .app-badges{ display:flex; align-items:center; justify-content:center; gap:10px; }
+  .app-badges a{ display:block; -webkit-tap-highlight-color:transparent; }
+  /* needed because the display:block above would otherwise beat the browser's own [hidden] rule */
+  .app-badges a[hidden]{ display:none; }
+  /* a badge whose store URL hasn't been filled in yet shouldn't pretend to be clickable */
+  .app-badges a:not([href]){ cursor:default; }
+  .app-badges img{ height:36px; width:auto; display:block; }
   #hint{ position:absolute; bottom:8px; left:0; right:0; text-align:center; color:rgba(122,106,153,0.6); font-size:10.5px; letter-spacing:0.03em; z-index:5; pointer-events:none; }
   #watermark{ position:absolute; bottom:10px; right:14px; z-index:6; opacity:0.55; pointer-events:none; }
   #watermark svg{ height:13px; width:auto; display:block; }
@@ -195,10 +188,10 @@
     .stat-row{ gap:14px; margin-bottom:2px; }
     .stat .num{ font-size:15px; }
     .stat .lbl{ font-size:7px; }
-    .coupon{ padding:3px 12px; gap:0; border-radius:8px; }
-    .coupon .code{ font-size:14px; }
-    .coupon .sub{ font-size:7px; }
-    .copy-note{ font-size:7px; height:7px; margin-top:0; }
+    .app-promo{ gap:4px; margin:0 0 9px; }
+    .app-promo-text{ font-size:8.5px; max-width:220px; }
+    .app-badges{ gap:6px; }
+    .app-badges img{ height:24px; }
     .btn{ font-size:11px; padding:5px 16px; border-radius:7px; box-shadow:0 2px 0 #4a2570; }
     .btn.secondary{ font-size:9px; padding:3px 10px; }
     .btn-stack{ gap:3px; margin-top:2px; }
@@ -223,12 +216,10 @@
     .stat-row{ gap:34px; margin-bottom:11px; }
     .stat .num{ font-size:34px; }
     .stat .lbl{ font-size:13px; }
-    .coupon{ padding:14px 30px; border-radius:15px; gap:6px; }
-    .coupon::before, .coupon::after{ width:18px; height:18px; }
-    .coupon::before{ left:-9px; } .coupon::after{ right:-9px; }
-    .coupon .code{ font-size:32px; }
-    .coupon .sub{ font-size:13px; }
-    .copy-note{ font-size:13px; height:15px; }
+    .app-promo{ gap:14px; margin:6px 0 28px; }
+    .app-promo-text{ font-size:18px; max-width:440px; }
+    .app-badges{ gap:16px; }
+    .app-badges img{ height:54px; }
     .btn{ font-size:19px; padding:15px 38px; border-radius:13px; }
     .btn.secondary{ font-size:15px; padding:11px 24px; }
     .btn-stack{ gap:11px; margin-top:9px; }
@@ -282,30 +273,21 @@
     </div>
   </div>
   <div id="win-overlay" class="overlay hidden">
-    <div id="win-step-1" class="win-step">
-      <h1>Delivered <span class="accent">safely</span></h1>
-      <p>Nice hands. The package arrived intact — here's something for the road.</p>
-      <div class="stat-row">
-        <div class="stat"><div class="num" id="win-distance">0m</div><div class="lbl">Distance</div></div>
-        <div class="stat"><div class="num" id="win-condition">100%</div><div class="lbl">Condition</div></div>
-      </div>
-      <div class="coupon">
-        <div class="sub">Your reward</div>
-        <div class="code" id="coupon-code">FAST15</div>
-        <div class="sub">-15% off shipping</div>
-      </div>
-      <div class="copy-note" id="copy-note"></div>
-      <div class="btn-stack">
-        <button class="btn" id="copy-btn">COPY CODE</button>
-        <button class="btn secondary" id="win-next-btn">NEXT</button>
+    <h1>Delivered <span class="accent">safely</span></h1>
+    <div class="stat-row">
+      <div class="stat"><div class="num" id="win-distance">0m</div><div class="lbl">Distance</div></div>
+      <div class="stat"><div class="num" id="win-condition">100%</div><div class="lbl">Condition</div></div>
+    </div>
+    <div class="app-promo">
+      <div class="app-promo-text">Download Venipak app on Android and iOS</div>
+      <div class="app-badges">
+        <a id="app-store-link" target="_blank" rel="noopener noreferrer"><img src="assets/images/logos/app-store.svg" alt="Download on the App Store"></a>
+        <a id="google-play-link" target="_blank" rel="noopener noreferrer"><img src="assets/images/logos/google-play.svg" alt="Get it on Google Play"></a>
       </div>
     </div>
-    <div id="win-step-2" class="win-step step-hidden">
-      <h1>Play <span class="accent">again?</span></h1>
-      <div class="btn-stack">
-        <button class="btn" id="play-again-btn">PLAY AGAIN</button>
-        <button class="btn secondary" id="home-btn-win">BACK TO HOME</button>
-      </div>
+    <div class="btn-stack">
+      <button class="btn" id="play-again-btn">PLAY AGAIN</button>
+      <button class="btn secondary" id="home-btn-win">BACK TO HOME</button>
     </div>
   </div>
   <div id="hint"></div>
@@ -330,6 +312,17 @@
   </button>
 </div>
 <script>
+// --- Edit me: the win screen's app promo. ---
+// Leave a URL empty and that badge simply renders as a non-clickable image. Which badge and
+// which line of copy appear depends on the device — see detectMobileOS() further down.
+const APP_STORE_URL = '';
+const GOOGLE_PLAY_URL = '';
+const APP_PROMO_TEXT = {
+  ios: 'Download Venipak app on iOS',
+  android: 'Download Venipak app on Android',
+  other: 'Download Venipak app on Android and iOS'
+};
+
 const BRAND = 0x9339f2;
 const BRAND_GLOW = 0xc79cf5;
 const BRAND_DEEP = 0x5b1fa6;
@@ -954,8 +947,6 @@ class RunnerScene extends Phaser.Scene {
       if(won){
         document.getElementById('win-distance').textContent = Math.floor(gameState.distance)+'m';
         document.getElementById('win-condition').textContent = Math.round(gameState.durability)+'%';
-        document.getElementById('win-step-1').classList.remove('step-hidden');
-        document.getElementById('win-step-2').classList.add('step-hidden');
         document.getElementById('win-overlay').classList.remove('hidden');
       } else {
         document.getElementById('go-distance').textContent = Math.floor(gameState.distance)+'m';
@@ -1094,24 +1085,31 @@ bindTap(document.getElementById('retry-btn'), startGame);
 bindTap(document.getElementById('play-again-btn'), startGame);
 bindTap(document.getElementById('home-btn-go'), goHome);
 bindTap(document.getElementById('home-btn-win'), goHome);
-bindTap(document.getElementById('win-next-btn'), function(){
-  document.getElementById('win-step-1').classList.add('step-hidden');
-  document.getElementById('win-step-2').classList.remove('step-hidden');
+
+// Store badges point at the URLs set at the top of this script; an unset one stays hrefless
+// so it renders as a plain image rather than a link that goes nowhere.
+[['app-store-link', APP_STORE_URL], ['google-play-link', GOOGLE_PLAY_URL]].forEach(function(pair){
+  const el = document.getElementById(pair[0]);
+  if(el && pair[1]) el.href = pair[1];
 });
 
-bindTap(document.getElementById('copy-btn'), function(){
-  const code = document.getElementById('coupon-code').textContent;
-  if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(code).then(function(){
-      document.getElementById('copy-note').textContent = 'Copied to clipboard';
-      setTimeout(function(){ document.getElementById('copy-note').textContent=''; }, 1800);
-    }).catch(function(){
-      document.getElementById('copy-note').textContent = code;
-    });
-  } else {
-    document.getElementById('copy-note').textContent = code;
-  }
-});
+// Show only the store the device can actually install from. Anything that isn't clearly one or
+// the other (desktop, or a browser we can't place) keeps both badges.
+function detectMobileOS(){
+  const ua = navigator.userAgent || '';
+  // iPadOS 13+ reports itself as a Mac, so a "Mac" claiming touch points is really an iPad.
+  // Desktop Macs report maxTouchPoints 0 — a trackpad doesn't count as a touch point.
+  if(/iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return 'ios';
+  if(/Android/i.test(ua)) return 'android';
+  return 'other';
+}
+const mobileOS = detectMobileOS();
+if(mobileOS === 'ios'){
+  document.getElementById('google-play-link').hidden = true;
+} else if(mobileOS === 'android'){
+  document.getElementById('app-store-link').hidden = true;
+}
+document.querySelector('.app-promo-text').textContent = APP_PROMO_TEXT[mobileOS];
 </script>
 </body>
 </html>
