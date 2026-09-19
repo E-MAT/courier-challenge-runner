@@ -336,6 +336,10 @@ const BRAND_DEEP = 0x5b1fa6;
 
 const LEVEL_DISTANCE = 3000;
 const ARRIVAL_SPEED = 150;
+// Arrival beats: the courier stops in front of the machine, holds for a moment, then the machine
+// opens with the confetti, and the win screen follows once that has played out.
+const PARCEL_OPEN_DELAY = 500;
+const WIN_SCREEN_DELAY = 3000;
 // The widest obstacle (the hole, ~244px wide once scaled) needs about 460 "meters" of travel
 // between spawning off the right edge and clearing the left edge, at the constant 2-pixels-per-meter
 // scroll ratio the game uses. Stopping spawns 500m before LEVEL_DISTANCE (comfortably more than
@@ -390,7 +394,18 @@ const OBSTACLE_DEFS = {
     { key:'obs_roadworks',  src:'assets/images/obstacles/top/road-works-sign.png',targetH:190 }
   ]
 };
-const FINISH_DEF = { key:'parcel_machine', src:'assets/images/parcel-machine.png', targetH:210 };
+const FINISH_DEF = { key:'parcel_machine', src:'assets/images/parcel-machine.png', targetH:189 };
+// Plays once, in place of the static parcel-machine image, the instant the courier reaches it.
+// originX/originY pin the sprite by the machine *body* rather than by its canvas: measured from
+// the art, the body's opaque bounds sit at x 95..773 of the 776px-wide frame (centre 434, i.e.
+// 46px right of the canvas centre) with its base 2px off the 1024px bottom edge. The static
+// parcel-machine.png is centred in its own canvas, so anchoring this one at a plain 0.5 would
+// make the machine jump sideways the instant the texture swaps.
+const PARCEL_OPEN_DEF = {
+  atlasKey:'parcel_open', png:'assets/animations/parcel_machine_opening.png', json:'assets/animations/parcel_machine_opening.json',
+  prefix:'courier_challenge_runner_parcel_machine_opening_2_', suffix:'.png', start:0, end:29,
+  originX: 434/776, originY: 1022/1024
+};
 
 // The background art is split into two independently-scrolling layers for a parallax effect:
 // sky/skyline/river (distant, moves slower) and curb/brick ground (moves at full gameplay
@@ -448,6 +463,7 @@ class RunnerScene extends Phaser.Scene {
     OBSTACLE_DEFS.ground.forEach(d=>this.load.image(d.key, d.src));
     OBSTACLE_DEFS.air.forEach(d=>this.load.image(d.key, d.src));
     this.load.image(FINISH_DEF.key, FINISH_DEF.src);
+    this.load.atlas(PARCEL_OPEN_DEF.atlasKey, PARCEL_OPEN_DEF.png, PARCEL_OPEN_DEF.json);
     TOP_BACKGROUND_DEFS.forEach(b=>this.load.image(b.key, b.src));
     BOTTOM_BACKGROUND_DEFS.forEach(b=>this.load.image(b.key, b.src));
     Object.values(COURIER_ANIMS).forEach(a=>this.load.atlas(a.atlasKey, a.png, a.json));
@@ -463,7 +479,7 @@ class RunnerScene extends Phaser.Scene {
     gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:this.courierY, isJumping:false, isDucking:false };
 
     // Tiny generated confetti-fleck texture (no image asset needed) used for the arrival
-    // celebration once the parcel machine settles into place — see launchConfetti().
+    // celebration once the courier reaches the parcel machine — see launchConfetti().
     if(!this.textures.exists('confetti_particle')){
       const cg = this.make.graphics({ x:0, y:0, add:false });
       cg.fillStyle(0xffffff, 1);
@@ -472,6 +488,19 @@ class RunnerScene extends Phaser.Scene {
       cg.destroy();
     }
     this.confettiEmitter = null;
+
+    // The parcel machine's opening animation (plays once, in place of the static image, when
+    // the courier reaches it) shares the same create-once-reuse pattern as the courier's anims.
+    if(!this.anims.exists('parcel_open')){
+      this.anims.create({
+        key: 'parcel_open',
+        frames: this.anims.generateFrameNames(PARCEL_OPEN_DEF.atlasKey, {
+          prefix: PARCEL_OPEN_DEF.prefix, start: PARCEL_OPEN_DEF.start, end: PARCEL_OPEN_DEF.end, zeroPad: 3, suffix: PARCEL_OPEN_DEF.suffix
+        }),
+        frameRate: 1000/42,
+        repeat: 0
+      });
+    }
 
     // Background is two independently-scrolling rows of full-image panels (not a single
     // repeating tile) so different skylines can appear within one run: each panel scrolls left
@@ -720,8 +749,12 @@ class RunnerScene extends Phaser.Scene {
     const dispW = tex.width*scale, dispH = finishTargetH;
     const startX = w + dispW/2 + 20; // enters from off-screen, same as any obstacle
     const restX = w - dispW/2 - 40;  // fixed resting spot, fully on screen near the right edge
-    const img = this.add.image(startX, this.groundY, FINISH_DEF.key).setOrigin(0.5,1).setDisplaySize(dispW,dispH);
-    this.finish = { img, x: startX, restX, width: dispW, settled: false };
+    // A sprite rather than a plain image so it can switch to the opening animation later
+    // (startParcelOpening()) without needing to swap game objects mid-scene. It stands on the
+    // courier's own ground line rather than the lower one the ground obstacles use, so the two
+    // read as sharing a floor once the courier walks up to it.
+    const img = this.add.sprite(startX, this.courierY, FINISH_DEF.key).setOrigin(0.5,1).setDisplaySize(dispW,dispH);
+    this.finish = { img, x: startX, restX, width: dispW, targetH: finishTargetH, settled: false };
   }
 
   updateFinish(dt){
@@ -732,23 +765,52 @@ class RunnerScene extends Phaser.Scene {
       if(this.finish.x <= this.finish.restX){
         this.finish.x = this.finish.restX;
         this.finish.settled = true;
-        this.launchConfetti();
       }
       this.finish.img.x = this.finish.x;
       return; // the courier waits for the machine to settle before it starts walking
     }
 
     this.playerContainer.x += ARRIVAL_SPEED*dt;
-    if(this.playerContainer.x >= this.finish.x - this.finish.width*0.42){
+    if(this.playerContainer.x >= this.finish.x - this.finish.width*0.15){
       this.finishTriggered = true;
-      this.endGame(true);
+      this.startParcelOpening();
     }
   }
 
-  // Celebration burst the instant the parcel machine settles into place — right as the courier
-  // starts walking toward it. Built from a generated texture (no image asset), so it works even
-  // if the client's real confetti/firework art from Makko AI never materializes; swapping in a
-  // sprite-based effect later only means changing what's added inside this method.
+  // Fires once, the instant the courier reaches the machine: freezes the walk cycle on a
+  // both-feet-planted frame instead of ending mid-stride, then after a beat swaps the static
+  // machine image for its opening animation (played once) with the confetti going off at the
+  // same moment, and hands off to the win screen once that has had time to play out.
+  startParcelOpening(){
+    const walkDef = COURIER_ANIMS.walk;
+    this.playerSprite.anims.stop();
+    this.playerSprite.setTexture(walkDef.atlasKey, `${walkDef.prefix}008${walkDef.suffix}`);
+
+    this.time.delayedCall(PARCEL_OPEN_DELAY, ()=>{
+      // play() first so the sprite's current frame becomes the animation's frame before
+      // setDisplaySize measures against it — the opening animation's source canvas isn't the
+      // same aspect ratio as the static parcel-machine.png, so sizing against the wrong frame
+      // would pop to the wrong size the instant it starts playing.
+      this.finish.img.play('parcel_open');
+      this.finish.img.setOrigin(PARCEL_OPEN_DEF.originX, PARCEL_OPEN_DEF.originY);
+      const openFirstFrame = `${PARCEL_OPEN_DEF.prefix}000${PARCEL_OPEN_DEF.suffix}`;
+      const openFrame = this.textures.getFrame(PARCEL_OPEN_DEF.atlasKey, openFirstFrame);
+      const openScale = this.finish.targetH / openFrame.height;
+      this.finish.img.setDisplaySize(openFrame.width*openScale, this.finish.targetH);
+
+      this.launchConfetti();
+
+      this.time.delayedCall(WIN_SCREEN_DELAY, ()=>{
+        this.endGame(true);
+      });
+    });
+  }
+
+  // Celebration burst the instant the courier reaches the parcel machine and its opening
+  // animation starts (see startParcelOpening()). Built from a generated texture (no image
+  // asset), so it works even if the client's real confetti/firework art from Makko AI never
+  // materializes; swapping in a sprite-based effect later only means changing what's added
+  // inside this method.
   launchConfetti(){
     if(this.confettiEmitter) return;
     const colors = [BRAND, 0xe7f43b, 0xffffff, 0x643395, 0xc79cf5];
