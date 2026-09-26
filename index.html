@@ -160,7 +160,7 @@
   .stat{text-align:center;}
   .stat .num{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:26px; color:var(--ink);}
   .stat .lbl{font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted);}
-  .app-promo{ display:flex; flex-direction:column; align-items:center; gap:8px; margin:2px 0 18px; flex-shrink:0; }
+  .app-promo{ display:flex; flex-direction:column; align-items:center; gap:8px; margin:2px 0 0; flex-shrink:0; }
   .app-promo-text{ font-size:12.5px; color:var(--ink); font-weight:600; max-width:300px; }
   .app-badges{ display:flex; align-items:center; justify-content:center; gap:10px; }
   .app-badges a{ display:block; -webkit-tap-highlight-color:transparent; }
@@ -169,6 +169,15 @@
   /* a badge whose store URL hasn't been filled in yet shouldn't pretend to be clickable */
   .app-badges a:not([href]){ cursor:default; }
   .app-badges img{ height:36px; width:auto; display:block; }
+  /* Store badges are for the device that can actually install from them; a desktop visitor gets
+     a Download link to the app page plus a QR code to carry it across to their phone. */
+  #download-btn{ display:none; text-decoration:none; margin-top:2px; }
+  #app-qr{ display:none; width:84px; height:84px; border-radius:6px; }
+  @media (pointer: fine){
+    .app-badges{ display:none; }
+    #download-btn{ display:inline-block; }
+    #app-qr{ display:block; }
+  }
   /* The HUD is DOM rather than something drawn into the Phaser canvas: the canvas renders at a
      fixed 720px-wide framebuffer and CSS stretches it to fill the card (1.67x at a 1200px card,
      more again on a 2x display), which visibly softened the text and bar. As real elements these
@@ -210,6 +219,25 @@
     /* matches the old PORTRAIT_HUD_SCALE: the strip reads thin against the taller portrait canvas */
     #hud{ font-size:calc(min(100vw, 720px) / 72 * 1.35); }
   }
+  /* Confetti is DOM rather than Phaser particles for one reason: the win overlay is opaque and
+     sits above the canvas, so canvas confetti vanishes the moment the success screen appears.
+     At z-index 15 this layer sits above the overlay (10) and below the controls (20), so the
+     celebration keeps falling over the success card. */
+  #confetti{ position:absolute; inset:0; z-index:15; pointer-events:none; overflow:hidden; display:none; }
+  #confetti.active{ display:block; }
+  .confetti-piece{
+    position:absolute; top:0;
+    animation-name:confetti-fall; animation-timing-function:linear; animation-iteration-count:infinite;
+    /* backwards: hold the first keyframe (above the top edge) during the start delay, otherwise a
+       staggered piece would sit parked at the top of the card until its turn came round */
+    animation-fill-mode:backwards;
+  }
+  @keyframes confetti-fall{
+    from{ transform:translate3d(0, -40px, 0) rotate(0deg); }
+    to  { transform:translate3d(var(--drift,0px), var(--fall,600px), 0) rotate(var(--spin,720deg)); }
+  }
+  /* The success screen fades up over the scene instead of cutting to it — see showWinOverlay(). */
+  #win-overlay{ opacity:1; }
   #hint{ position:absolute; bottom:8px; left:0; right:0; text-align:center; color:rgba(122,106,153,0.6); font-size:10.5px; letter-spacing:0.03em; z-index:5; pointer-events:none; }
   #watermark{ position:absolute; bottom:10px; right:14px; z-index:6; opacity:0.55; pointer-events:none; }
   #watermark img{ height:13px; width:auto; display:block; }
@@ -247,7 +275,7 @@
     .stat-row{ gap:14px; margin-bottom:2px; }
     .stat .num{ font-size:15px; }
     .stat .lbl{ font-size:7px; }
-    .app-promo{ gap:4px; margin:0 0 9px; }
+    .app-promo{ gap:4px; margin:0; }
     .app-promo-text{ font-size:8.5px; max-width:220px; }
     .app-badges{ gap:6px; }
     .app-badges img{ height:24px; }
@@ -278,7 +306,7 @@
     #win-overlay .btn, #gameover-overlay .btn{ font-size:16px; padding:11px 28px; border-radius:10px; box-shadow:0 4px 0 #4a2570; }
     #win-overlay .btn.secondary, #gameover-overlay .btn.secondary{ font-size:13px; padding:8px 18px; box-shadow:none; }
     #win-overlay .btn-stack, #gameover-overlay .btn-stack{ gap:9px; margin-top:7px; }
-    #win-overlay .app-promo{ gap:8px; margin:0 0 18px; }
+    #win-overlay .app-promo{ gap:8px; margin:0; }
     #win-overlay .app-promo-text{ font-size:14px; max-width:290px; }
     #win-overlay .app-badges{ gap:10px; }
     #win-overlay .app-badges img{ height:38px; }
@@ -303,7 +331,8 @@
     .stat-row{ gap:34px; margin-bottom:11px; }
     .stat .num{ font-size:34px; }
     .stat .lbl{ font-size:13px; }
-    .app-promo{ gap:14px; margin:6px 0 28px; }
+    .app-promo{ gap:14px; margin:6px 0 0; }
+    #app-qr{ width:120px; height:120px; }
     .app-promo-text{ font-size:18px; max-width:440px; }
     .app-badges{ gap:16px; }
     .app-badges img{ height:54px; }
@@ -370,12 +399,11 @@
         <a id="app-store-link" target="_blank" rel="noopener noreferrer"><img src="assets/images/logos/app-store.svg" alt="Download on the App Store"></a>
         <a id="google-play-link" target="_blank" rel="noopener noreferrer"><img src="assets/images/logos/google-play.svg" alt="Get it on Google Play"></a>
       </div>
-    </div>
-    <div class="btn-stack">
-      <button class="btn" id="play-again-btn">PLAY AGAIN</button>
-      <button class="btn secondary" id="home-btn-win">BACK TO HOME</button>
+      <a class="btn" id="download-btn" target="_blank" rel="noopener noreferrer">DOWNLOAD</a>
+      <img id="app-qr" src="assets/images/app-qr-code.png" alt="QR code to download the Venipak app">
     </div>
   </div>
+  <div id="confetti"></div>
   <div id="hud">
     <div class="hud-dist">
       <div class="hud-dist-num" id="hud-distance">0 m</div>
@@ -403,8 +431,10 @@
 // --- Edit me: the win screen's app promo. ---
 // Leave a URL empty and that badge simply renders as a non-clickable image. Which badge and
 // which line of copy appear depends on the device — see detectMobileOS() further down.
+// DOWNLOAD_URL is the desktop equivalent: one button in place of the two store badges.
 const APP_STORE_URL = 'https://apps.apple.com/';
 const GOOGLE_PLAY_URL = 'https://play.google.com/';
+const DOWNLOAD_URL = 'https://venipak.com/lt/app/download/';
 const APP_PROMO_TEXT = {
   ios: 'Download Venipak app on iOS',
   android: 'Download Venipak app on Android',
@@ -414,7 +444,7 @@ const APP_PROMO_TEXT = {
 const BRAND = 0x9339f2;
 const BRAND_DEEP = 0x5b1fa6;
 
-const LEVEL_DISTANCE = 1000;
+const LEVEL_DISTANCE = 3000;
 // Pace of the whole arrival: the machine's slide-in, the world scroll behind it, and the
 // courier's walk all run at this speed. The walk cycle's frame rate was authored against
 // WALK_CYCLE_TUNED_SPEED, so setCourierAnim() scales the animation by the ratio between the two —
@@ -430,12 +460,13 @@ const WALK_CYCLE_TUNED_SPEED = 150;
 const ARRIVAL_STOP_OVERLAP = 35;
 const ARRIVAL_EASE_DISTANCE = 50;
 const ARRIVAL_EASE_MIN = 0.3;
-// Arrival beats: the courier stops in front of the machine, holds for a moment, then the machine
-// opens with the confetti, and the win screen follows once that has played out. The door
-// animation itself is 30 frames at ~24fps (~1.3s), so WIN_SCREEN_DELAY only needs to outlast
-// that — the rest would just be staring at an open locker.
+// Arrival beats: the courier stops in front of the machine, holds for PARCEL_OPEN_DELAY, then the
+// machine opens and the confetti starts together; WIN_SCREEN_DELAY later the win screen begins
+// fading in over WIN_FADE_MS. The scene stays visible through the fade, so the door animation
+// (30 frames at ~24fps, ~1.3s) and the courier's lift still read before it is fully covered.
 const PARCEL_OPEN_DELAY = 500;
-const WIN_SCREEN_DELAY = 1600;
+const WIN_SCREEN_DELAY = 500;
+const WIN_FADE_MS = 1200;
 // Spawning stops this far out so the road is clear by the time the courier walks it. Obstacles
 // keep scrolling through the machine's slide-in (see update()), which buys some of that clearing
 // time back, so the gap doesn't have to cover the whole journey off-screen on its own — it only
@@ -565,7 +596,7 @@ const COURIER_ANIMS = {
     atlasKey:'courier_raise', png:'assets/animations/courier_raising_the_box.png', json:'assets/animations/courier_raising_the_box.json',
     prefix:'courier_raising_the_box_raising-the-box-up_', suffix:'.png', start:0, end:66,
     originX:42.5/225, originY:255/256, loop:false, heightRatio:249/195,
-    durationMs: PARCEL_OPEN_DELAY + WIN_SCREEN_DELAY
+    durationMs: PARCEL_OPEN_DELAY + WIN_SCREEN_DELAY + WIN_FADE_MS
   }
 };
 
@@ -592,17 +623,6 @@ class RunnerScene extends Phaser.Scene {
     // obstacles and the parcel machine keep the full shift
     this.courierY = h*GROUND_Y_RATIO + GROUND_Y_SHIFT/2;
     gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:this.courierY, isJumping:false, isDucking:false };
-
-    // Tiny generated confetti-fleck texture (no image asset needed) used for the arrival
-    // celebration once the courier reaches the parcel machine — see launchConfetti().
-    if(!this.textures.exists('confetti_particle')){
-      const cg = this.make.graphics({ x:0, y:0, add:false });
-      cg.fillStyle(0xffffff, 1);
-      cg.fillRect(0, 0, 6, 10);
-      cg.generateTexture('confetti_particle', 6, 10);
-      cg.destroy();
-    }
-    this.confettiEmitter = null;
 
     // The parcel machine's opening animation (plays once, in place of the static image, when
     // the courier reaches it) shares the same create-once-reuse pattern as the courier's anims.
@@ -861,6 +881,7 @@ class RunnerScene extends Phaser.Scene {
       if(this.finish.x <= this.finish.restX){
         this.finish.x = this.finish.restX;
         this.finish.settled = true;
+        startConfetti(); // the machine is in place and the courier sets off — celebrate from here
       }
       this.finish.img.x = this.finish.x;
       return; // the courier waits for the machine to settle before it starts walking
@@ -882,8 +903,8 @@ class RunnerScene extends Phaser.Scene {
 
   // Fires once, the instant the courier reaches the machine: he switches from the walk cycle to
   // lifting the box in, then after a beat the static machine image swaps for its opening
-  // animation (played once) with the confetti going off at the same moment, and the win screen
-  // follows once that has had time to play out.
+  // animation (played once), and the win screen follows once that has had time to play out.
+  // The confetti is already falling by this point — it starts when he sets off (updateFinish).
   startParcelOpening(){
     this.setCourierAnim('raise');
 
@@ -899,37 +920,10 @@ class RunnerScene extends Phaser.Scene {
       const openScale = this.finish.targetH / openFrame.height;
       this.finish.img.setDisplaySize(openFrame.width*openScale, this.finish.targetH);
 
-      this.launchConfetti();
-
       this.time.delayedCall(WIN_SCREEN_DELAY, ()=>{
         this.endGame(true);
       });
     });
-  }
-
-  // Celebration burst the instant the courier reaches the parcel machine and its opening
-  // animation starts (see startParcelOpening()). Built from a generated texture (no image
-  // asset), so it works even if the client's real confetti/firework art from Makko AI never
-  // materializes; swapping in a sprite-based effect later only means changing what's added
-  // inside this method.
-  launchConfetti(){
-    if(this.confettiEmitter) return;
-    const colors = [BRAND, 0xe7f43b, 0xffffff, 0x643395, 0xc79cf5];
-    this.confettiEmitter = this.add.particles(0, -20, 'confetti_particle', {
-      x: { min: this.scale.width*0.3, max: this.scale.width*0.95 },
-      y: -20,
-      lifespan: 2200,
-      speedY: { min: 120, max: 260 },
-      speedX: { min: -60, max: 60 },
-      gravityY: 220,
-      rotate: { min: 0, max: 360 },
-      scale: { start: 1, end: 0.6 },
-      quantity: 4,
-      frequency: 40,
-      tint: colors
-    }).setDepth(15);
-    this.time.delayedCall(1600, ()=>{ if(this.confettiEmitter) this.confettiEmitter.stop(); });
-    this.time.delayedCall(4000, ()=>{ if(this.confettiEmitter){ this.confettiEmitter.destroy(); this.confettiEmitter = null; } });
   }
 
   update(time, delta){
@@ -1057,15 +1051,17 @@ class RunnerScene extends Phaser.Scene {
   endGame(won){
     if(!gameState.running) return;
     gameState.running = false;
+    if(won){
+      // No extra beat here: the win screen's timing is already orchestrated by the arrival
+      // (PARCEL_OPEN_DELAY then WIN_SCREEN_DELAY), and it fades up rather than cutting in.
+      document.getElementById('win-distance').textContent = Math.floor(gameState.distance)+'m';
+      document.getElementById('win-condition').textContent = Math.round(gameState.durability)+'%';
+      showWinOverlay();
+      return;
+    }
     this.time.delayedCall(250, ()=>{
-      if(won){
-        document.getElementById('win-distance').textContent = Math.floor(gameState.distance)+'m';
-        document.getElementById('win-condition').textContent = Math.round(gameState.durability)+'%';
-        document.getElementById('win-overlay').classList.remove('hidden');
-      } else {
-        document.getElementById('go-distance').textContent = Math.floor(gameState.distance)+'m';
-        document.getElementById('gameover-overlay').classList.remove('hidden');
-      }
+      document.getElementById('go-distance').textContent = Math.floor(gameState.distance)+'m';
+      document.getElementById('gameover-overlay').classList.remove('hidden');
     });
   }
 }
@@ -1150,11 +1146,85 @@ if(duckBtn){
   });
 }
 
+// --- Confetti ---
+// Pieces are plain elements on a layer above the win overlay, each falling on its own infinite
+// CSS animation, so the celebration carries on over the success screen instead of being hidden
+// behind it. Every piece begins above the top edge (the keyframe starts at -40px, outside the
+// clipped layer) with a staggered start, so the confetti falls into view rather than appearing
+// already scattered across the whole screen.
+const CONFETTI_COLORS = ['#9339f2', '#e7f43b', '#ffffff', '#643395', '#c79cf5'];
+const CONFETTI_PIECES = 70;
+// How long the confetti keeps falling before it winds down. Pieces already in the air finish
+// their drop, so the rain thins out naturally over the following few seconds instead of
+// vanishing all at once.
+const CONFETTI_DURATION_MS = 7000;
+let confettiStopTimer = null;
+function startConfetti(){
+  const layer = document.getElementById('confetti');
+  if(layer.classList.contains('active')) return;
+  // Reveal the layer before measuring: it is display:none until then, which would report a
+  // height of 0 and leave every piece looping over a tiny stretch at the top of the card.
+  layer.classList.add('active');
+  const fall = layer.clientHeight + 80;
+  const frag = document.createDocumentFragment();
+  for(let i=0;i<CONFETTI_PIECES;i++){
+    const p = document.createElement('div');
+    p.className = 'confetti-piece';
+    const w = 4 + Math.random()*5;
+    p.style.left = (Math.random()*98)+'%'; // not a full 100 — a piece at the edge is clipped away
+    p.style.width = w+'px';
+    p.style.height = (w*1.6)+'px';
+    p.style.background = CONFETTI_COLORS[(Math.random()*CONFETTI_COLORS.length)|0];
+    p.style.setProperty('--fall', fall+'px');
+    p.style.setProperty('--drift', (Math.random()*80-40)+'px');
+    p.style.setProperty('--spin', (360+Math.random()*720)+'deg');
+    p.style.animationDuration = (2.2+Math.random()*2)+'s';
+    p.style.animationDelay = (Math.random()*2)+'s'; // staggered, but never mid-fall on frame one
+    frag.appendChild(p);
+  }
+  layer.appendChild(frag);
+  clearTimeout(confettiStopTimer);
+  confettiStopTimer = setTimeout(retireConfetti, CONFETTI_DURATION_MS);
+}
+// Each piece bows out the next time its loop wraps back to the top, which happens off-screen —
+// so the rain tails off over one fall's worth of time rather than popping out mid-air.
+function retireConfetti(){
+  const layer = document.getElementById('confetti');
+  [...layer.children].forEach(p=>{
+    p.addEventListener('animationiteration', ()=>p.remove(), { once:true });
+  });
+}
+function stopConfetti(){
+  clearTimeout(confettiStopTimer);
+  confettiStopTimer = null;
+  const layer = document.getElementById('confetti');
+  layer.classList.remove('active');
+  layer.replaceChildren();
+}
+
+// Fades the success screen up over the still-running scene rather than cutting to it.
+function showWinOverlay(){
+  const ov = document.getElementById('win-overlay');
+  ov.style.transition = 'none';
+  ov.style.opacity = '0';
+  ov.classList.remove('hidden');
+  void ov.offsetWidth; // commit the starting opacity before transitioning away from it
+  ov.style.transition = 'opacity '+WIN_FADE_MS+'ms ease';
+  ov.style.opacity = '1';
+}
+function resetWinOverlay(){
+  const ov = document.getElementById('win-overlay');
+  ov.classList.add('hidden');
+  ov.style.transition = 'none';
+  ov.style.opacity = '1';
+}
+
 // --- Loading progress (asset loads can take a while on slow connections) ---
 function showLoadingOverlay(){
   document.getElementById('start-overlay').classList.add('hidden');
   document.getElementById('gameover-overlay').classList.add('hidden');
-  document.getElementById('win-overlay').classList.add('hidden');
+  stopConfetti();
+  resetWinOverlay();
   setLoadingProgress(0);
   document.getElementById('loading-overlay').classList.remove('hidden');
 }
@@ -1179,7 +1249,8 @@ function startGame(){
 
 function goHome(){
   document.getElementById('gameover-overlay').classList.add('hidden');
-  document.getElementById('win-overlay').classList.add('hidden');
+  stopConfetti();
+  resetWinOverlay();
   document.getElementById('loading-overlay').classList.add('hidden');
   document.getElementById('start-overlay').classList.remove('hidden');
   if(game){ game.destroy(true); game = null; }
@@ -1205,13 +1276,12 @@ function bindTap(el, handler){
 
 bindTap(document.getElementById('start-btn'), startGame);
 bindTap(document.getElementById('retry-btn'), startGame);
-bindTap(document.getElementById('play-again-btn'), startGame);
 bindTap(document.getElementById('home-btn-go'), goHome);
-bindTap(document.getElementById('home-btn-win'), goHome);
 
-// Store badges point at the URLs set at the top of this script; an unset one stays hrefless
-// so it renders as a plain image rather than a link that goes nowhere.
-[['app-store-link', APP_STORE_URL], ['google-play-link', GOOGLE_PLAY_URL]].forEach(function(pair){
+// Store badges and the desktop Download button point at the URLs set at the top of this script;
+// an unset one stays hrefless so it renders as plain content rather than a link going nowhere.
+[['app-store-link', APP_STORE_URL], ['google-play-link', GOOGLE_PLAY_URL],
+ ['download-btn', DOWNLOAD_URL]].forEach(function(pair){
   const el = document.getElementById(pair[0]);
   if(el && pair[1]) el.href = pair[1];
 });
