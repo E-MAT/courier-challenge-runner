@@ -415,13 +415,22 @@ const BRAND = 0x9339f2;
 const BRAND_GLOW = 0xc79cf5;
 const BRAND_DEEP = 0x5b1fa6;
 
-const LEVEL_DISTANCE = 3000;
+const LEVEL_DISTANCE = 1000;
 // Pace of the whole arrival: the machine's slide-in, the world scroll behind it, and the
 // courier's walk all run at this speed. The walk cycle's frame rate was authored against
 // WALK_CYCLE_TUNED_SPEED, so setCourierAnim() scales the animation by the ratio between the two —
 // otherwise raising this makes the courier's feet skate along the ground.
 const ARRIVAL_SPEED = 220;
 const WALK_CYCLE_TUNED_SPEED = 150;
+// How far past the machine's near edge the courier plants himself (he ends up standing in front
+// of the open door, overlapping the machine), and how the last stretch is eased: speed tapers
+// over ARRIVAL_EASE_DISTANCE px down to ARRIVAL_EASE_MIN of full pace, so he slows to a halt
+// rather than marching into a dead stop. The floor matters — a taper all the way to zero would
+// approach the mark without ever reaching it. The overlap is scaled like the rest of the scene's
+// fixed sizes so it stays proportional on portrait's larger art.
+const ARRIVAL_STOP_OVERLAP = 35;
+const ARRIVAL_EASE_DISTANCE = 50;
+const ARRIVAL_EASE_MIN = 0.3;
 // Arrival beats: the courier stops in front of the machine, holds for a moment, then the machine
 // opens with the confetti, and the win screen follows once that has played out. The door
 // animation itself is 30 frames at ~24fps (~1.3s), so WIN_SCREEN_DELAY only needs to outlast
@@ -839,11 +848,18 @@ class RunnerScene extends Phaser.Scene {
       return; // the courier waits for the machine to settle before it starts walking
     }
 
-    this.playerContainer.x += ARRIVAL_SPEED*dt;
-    if(this.playerContainer.x >= this.finish.x - this.finish.width*0.15){
+    const stopX = this.finish.x - this.finish.width*0.5 + ARRIVAL_STOP_OVERLAP*PORTRAIT_OBJECT_SCALE;
+    const remaining = stopX - this.playerContainer.x;
+    if(remaining <= 0){
       this.finishTriggered = true;
       this.startParcelOpening();
+      return;
     }
+    // Slow into the mark over the final stretch, scaling the walk cycle by the same factor so the
+    // footfalls stay matched to the ground right down to standing still.
+    const ease = Phaser.Math.Clamp(remaining/ARRIVAL_EASE_DISTANCE, ARRIVAL_EASE_MIN, 1);
+    this.playerContainer.x += ARRIVAL_SPEED*ease*dt;
+    this.playerSprite.anims.timeScale = (ARRIVAL_SPEED/WALK_CYCLE_TUNED_SPEED)*ease;
   }
 
   // Fires once, the instant the courier reaches the machine: freezes the walk cycle on a
@@ -1003,16 +1019,6 @@ class RunnerScene extends Phaser.Scene {
     this.updateFinish(dt);
 
     this.updateHud();
-
-    // A damaged package makes the courier rock side to side as feedback — the more damage taken,
-    // the wider the swing (at full condition it's exactly zero, which is why it only shows up
-    // after a hit). It's driven by the clock, so it never settles on its own: during the scripted
-    // arrival, where the courier walks up to the machine and then stands still, that endless rock
-    // reads as a glitch rather than as damage. Ease it back upright there instead of snapping.
-    const pct = gameState.durability/DURABILITY_MAX;
-    this.playerContainer.rotation = this.arriving
-      ? Phaser.Math.Linear(this.playerContainer.rotation, 0, Math.min(1, dt*8))
-      : (1-pct)*0.06*Math.sin(time/130);
   }
 
   updateHud(){
