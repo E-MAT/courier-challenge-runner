@@ -412,7 +412,6 @@ const APP_PROMO_TEXT = {
 };
 
 const BRAND = 0x9339f2;
-const BRAND_GLOW = 0xc79cf5;
 const BRAND_DEEP = 0x5b1fa6;
 
 const LEVEL_DISTANCE = 1000;
@@ -490,6 +489,10 @@ const OBSTACLE_DEFS = {
   ]
 };
 const FINISH_DEF = { key:'parcel_machine', src:'assets/images/parcel-machine.png', targetH:189 };
+// Where the machine comes to rest, as a fraction of the canvas width to its centre. Moving it
+// left lengthens its slide-in but shortens the courier's walk to it by the same amount, so the
+// ending's overall length barely moves.
+const FINISH_REST_X_RATIO = 0.66;
 // Plays once, in place of the static parcel-machine image, the instant the courier reaches it.
 // originX/originY pin the sprite by the machine *body* rather than by its canvas: measured from
 // the art, the body's opaque bounds sit at x 95..773 of the 776px-wide frame (centre 434, i.e.
@@ -705,9 +708,6 @@ class RunnerScene extends Phaser.Scene {
     this._currentAnimKey = null;
     this.setCourierAnim('run');
 
-    this.boxGlow = this.add.graphics();
-    this.playerContainer.addAt(this.boxGlow, 1);
-
     this.redrawCourier();
   }
 
@@ -740,10 +740,6 @@ class RunnerScene extends Phaser.Scene {
     } else if(this.playerSprite.anims.isPaused){
       this.playerSprite.anims.resume();
     }
-
-    this.boxGlow.clear();
-    this.boxGlow.fillStyle(BRAND_GLOW, 0.16);
-    this.boxGlow.fillCircle(14, -40, 24);
   }
 
   tryJump(){
@@ -847,8 +843,8 @@ class RunnerScene extends Phaser.Scene {
     const finishTargetH = FINISH_DEF.targetH * PORTRAIT_OBJECT_SCALE;
     const scale = finishTargetH / tex.height;
     const dispW = tex.width*scale, dispH = finishTargetH;
-    const startX = w + dispW/2 + 20; // enters from off-screen, same as any obstacle
-    const restX = w - dispW/2 - 40;  // fixed resting spot, fully on screen near the right edge
+    const startX = w + dispW/2 + 20;       // enters from off-screen, same as any obstacle
+    const restX = w * FINISH_REST_X_RATIO; // fixed resting spot, measured from the left edge
     // A sprite rather than a plain image so it can switch to the opening animation later
     // (startParcelOpening()) without needing to swap game objects mid-scene. It stands on the
     // courier's own ground line rather than the lower one the ground obstacles use, so the two
