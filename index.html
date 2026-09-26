@@ -150,11 +150,6 @@
     user-select:none;
   }
   .btn:active{transform:translateY(3px); box-shadow:0 1px 0 #4a2570, 0 4px 12px rgba(147,57,242,0.2);}
-  .btn.secondary{
-    background:var(--paper); color:var(--brand-deep); box-shadow:none;
-    border:1.5px solid var(--brand-deep);
-    font-size:12.5px; padding:8px 18px;
-  }
   .btn-stack{ display:flex; flex-direction:column; align-items:center; gap:8px; margin-top:6px; flex-shrink:0; }
   .stat-row{display:flex; gap:26px; margin-bottom:8px; flex-shrink:0;}
   .stat{text-align:center;}
@@ -198,10 +193,6 @@
   .hud-label{
     font-family:'Inter',sans-serif; font-size:0.9em; line-height:1.2;
     text-transform:uppercase; letter-spacing:0.1em; color:#b9a9d6; white-space:nowrap;
-  }
-  .hud-dist-num{
-    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:2.2em; line-height:1.1;
-    color:#f3e9d6;
   }
   .hud-cond{
     position:absolute; left:50%; transform:translateX(-50%);
@@ -280,7 +271,6 @@
     .app-badges{ gap:6px; }
     .app-badges img{ height:24px; }
     .btn{ font-size:11px; padding:5px 16px; border-radius:7px; box-shadow:0 2px 0 #4a2570; }
-    .btn.secondary{ font-size:9px; padding:3px 10px; }
     .btn-stack{ gap:3px; margin-top:2px; }
     #start-overlay .brand-lockup{ margin-bottom:8px; }
     #start-overlay .brand-lockup img{ height:16px; }
@@ -304,7 +294,6 @@
     #win-overlay .stat .num, #gameover-overlay .stat .num{ font-size:26px; }
     #win-overlay .stat .lbl, #gameover-overlay .stat .lbl{ font-size:11px; }
     #win-overlay .btn, #gameover-overlay .btn{ font-size:16px; padding:11px 28px; border-radius:10px; box-shadow:0 4px 0 #4a2570; }
-    #win-overlay .btn.secondary, #gameover-overlay .btn.secondary{ font-size:13px; padding:8px 18px; box-shadow:none; }
     #win-overlay .btn-stack, #gameover-overlay .btn-stack{ gap:9px; margin-top:7px; }
     #win-overlay .app-promo{ gap:8px; margin:0; }
     #win-overlay .app-promo-text{ font-size:14px; max-width:290px; }
@@ -337,7 +326,6 @@
     .app-badges{ gap:16px; }
     .app-badges img{ height:54px; }
     .btn{ font-size:19px; padding:15px 38px; border-radius:13px; }
-    .btn.secondary{ font-size:15px; padding:11px 24px; }
     .btn-stack{ gap:11px; margin-top:9px; }
     #start-overlay .brand-lockup{ margin-bottom:26px; }
     #start-overlay .brand-lockup img{ height:32px; }
@@ -379,18 +367,14 @@
     <div class="loading-pct" id="loading-pct">0%</div>
   </div>
   <div id="gameover-overlay" class="overlay hidden">
-    <h1 style="color:#c94f4f">Package damaged</h1>
-    <p>The box didn't make it this time. Give it another go.</p>
-    <div class="stat-row"><div class="stat"><div class="num" id="go-distance">0m</div><div class="lbl">Distance</div></div></div>
+    <h1 style="color:#c94f4f">OJOJOJ KAIP GAILA</h1>
     <div class="btn-stack">
-      <button class="btn" id="retry-btn">TRY AGAIN</button>
-      <button class="btn secondary" id="home-btn-go">BACK TO HOME</button>
+      <button class="btn" id="retry-btn">Bandyk dar kartą</button>
     </div>
   </div>
   <div id="win-overlay" class="overlay hidden">
     <h1>Delivered <span class="accent">safely</span></h1>
     <div class="stat-row">
-      <div class="stat"><div class="num" id="win-distance">0m</div><div class="lbl">Distance</div></div>
       <div class="stat"><div class="num" id="win-condition">100%</div><div class="lbl">Condition</div></div>
     </div>
     <div class="app-promo">
@@ -405,10 +389,6 @@
   </div>
   <div id="confetti"></div>
   <div id="hud">
-    <div class="hud-dist">
-      <div class="hud-dist-num" id="hud-distance">0 m</div>
-      <div class="hud-label">Distance</div>
-    </div>
     <div class="hud-cond">
       <div class="hud-label">Package condition</div>
       <div class="hud-bar"><div class="hud-bar-fill" id="hud-bar-fill"></div></div>
@@ -440,9 +420,6 @@ const APP_PROMO_TEXT = {
   android: 'Download Venipak app on Android',
   other: 'Download Venipak app on Android and iOS'
 };
-
-const BRAND = 0x9339f2;
-const BRAND_DEEP = 0x5b1fa6;
 
 const LEVEL_DISTANCE = 3000;
 // Pace of the whole arrival: the machine's slide-in, the world scroll behind it, and the
@@ -678,7 +655,6 @@ class RunnerScene extends Phaser.Scene {
 
     // The HUD lives in the DOM (see #hud) rather than being drawn here, so it stays sharp when
     // the canvas is scaled up; this scene only feeds it values — see updateHud().
-    this.hudDistanceEl = document.getElementById('hud-distance');
     this.hudBarFillEl = document.getElementById('hud-bar-fill');
     this.updateHud();
 
@@ -1033,7 +1009,6 @@ class RunnerScene extends Phaser.Scene {
 
   updateHud(){
     const pct = gameState.durability/DURABILITY_MAX;
-    this.hudDistanceEl.textContent = Math.floor(gameState.distance)+' m';
     this.hudBarFillEl.style.width = (pct*100)+'%';
     this.hudBarFillEl.style.background = pct>0.5 ? '#9339f2' : (pct>0.25 ? '#d9a548' : '#7a2e2e');
   }
@@ -1054,13 +1029,11 @@ class RunnerScene extends Phaser.Scene {
     if(won){
       // No extra beat here: the win screen's timing is already orchestrated by the arrival
       // (PARCEL_OPEN_DELAY then WIN_SCREEN_DELAY), and it fades up rather than cutting in.
-      document.getElementById('win-distance').textContent = Math.floor(gameState.distance)+'m';
       document.getElementById('win-condition').textContent = Math.round(gameState.durability)+'%';
       showWinOverlay();
       return;
     }
     this.time.delayedCall(250, ()=>{
-      document.getElementById('go-distance').textContent = Math.floor(gameState.distance)+'m';
       document.getElementById('gameover-overlay').classList.remove('hidden');
     });
   }
