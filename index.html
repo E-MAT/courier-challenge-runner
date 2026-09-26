@@ -546,6 +546,23 @@ const COURIER_ANIMS = {
     // fill ratio as running (120x249), so it shares the run scale rather than needing its own ratio.
     atlasKey:'courier_walk', png:'assets/animations/courier_walking.png', json:'assets/animations/courier_walking.json',
     prefix:'courier_walking_default_', suffix:'.png', start:0, end:18, originX:0.5, loop:true, heightRatio:1
+  },
+  raise: {
+    // Lifting the box into the locker — plays once and holds on the last frame. This sheet is
+    // framed differently from the others and needs all three overrides to line up with them:
+    // the courier is drawn only 195px tall head-to-feet (vs ~249 for run/walk) in the same 256px
+    // canvas, so heightRatio scales him back to matching size; he sits well left of centre
+    // (content centre x≈42 of 225) rather than mid-canvas, so originX pins him by his body
+    // instead of by the frame; and his feet sit flush with the bottom edge rather than 3px up,
+    // hence its own originY.
+    // durationMs rather than a frame rate: at the sheet's authored 52ms a frame the lift runs
+    // 3.5s, but the win screen covers the scene 2.35s after he stops, so a third of it — the
+    // part where the box actually goes in — would never be seen. Pinning it to the arrival beats
+    // makes it finish just as the win screen is triggered, and keeps it correct if those change.
+    atlasKey:'courier_raise', png:'assets/animations/courier_raising_the_box.png', json:'assets/animations/courier_raising_the_box.json',
+    prefix:'courier_raising_the_box_raising-the-box-up_', suffix:'.png', start:0, end:66,
+    originX:42.5/225, originY:255/256, loop:false, heightRatio:249/195,
+    durationMs: PARCEL_OPEN_DELAY + WIN_SCREEN_DELAY
   }
 };
 
@@ -658,12 +675,15 @@ class RunnerScene extends Phaser.Scene {
   buildCourier(){
     Object.entries(COURIER_ANIMS).forEach(([key, a])=>{
       if(!this.anims.exists(key)){
+        // durationMs lets a one-shot cycle state how long it should take overall and have the
+        // rate follow its own frame count; the looping cycles just use the shared 42ms a frame.
+        const frameCount = a.end - a.start + 1;
         this.anims.create({
           key,
           frames: this.anims.generateFrameNames(a.atlasKey, {
             prefix: a.prefix, start: a.start, end: a.end, zeroPad: 3, suffix: a.suffix
           }),
-          frameRate: 1000/42,
+          frameRate: a.durationMs ? frameCount/(a.durationMs/1000) : 1000/42,
           repeat: a.loop ? -1 : 0
         });
       }
@@ -694,7 +714,7 @@ class RunnerScene extends Phaser.Scene {
   setCourierAnim(key){
     if(this._currentAnimKey === key) return;
     const def = COURIER_ANIMS[key];
-    this.playerSprite.setOrigin(def.originX, COURIER_ANIM_ORIGIN_Y);
+    this.playerSprite.setOrigin(def.originX, def.originY || COURIER_ANIM_ORIGIN_Y);
     this.playerSprite.setScale(this.playerBaseScale * def.heightRatio);
     this.playerSprite.play(key);
     // The walk is the one cycle tied to real ground movement, so its playback has to track
@@ -711,8 +731,10 @@ class RunnerScene extends Phaser.Scene {
     this.shadowGfx.fillStyle(0x000000, 0.35*shadowScale);
     this.shadowGfx.fillEllipse(0, this.courierY - this.playerContainer.y, 40*shadowScale, 10*shadowScale);
 
-    // jumping always freezes on the run cycle — ducking is already forced off mid-air
-    this.setCourierAnim(this.arriving ? 'walk' : (ducking ? 'duck' : 'run'));
+    // jumping always freezes on the run cycle — ducking is already forced off mid-air.
+    // finishTriggered means he's reached the machine and is lifting the box in; that takes
+    // priority over the walk this would otherwise keep re-selecting for the rest of the arrival.
+    this.setCourierAnim(this.finishTriggered ? 'raise' : (this.arriving ? 'walk' : (ducking ? 'duck' : 'run')));
     if(gameState.isJumping){
       if(!this.playerSprite.anims.isPaused) this.playerSprite.anims.pause();
     } else if(this.playerSprite.anims.isPaused){
@@ -862,14 +884,12 @@ class RunnerScene extends Phaser.Scene {
     this.playerSprite.anims.timeScale = (ARRIVAL_SPEED/WALK_CYCLE_TUNED_SPEED)*ease;
   }
 
-  // Fires once, the instant the courier reaches the machine: freezes the walk cycle on a
-  // both-feet-planted frame instead of ending mid-stride, then after a beat swaps the static
-  // machine image for its opening animation (played once) with the confetti going off at the
-  // same moment, and hands off to the win screen once that has had time to play out.
+  // Fires once, the instant the courier reaches the machine: he switches from the walk cycle to
+  // lifting the box in, then after a beat the static machine image swaps for its opening
+  // animation (played once) with the confetti going off at the same moment, and the win screen
+  // follows once that has had time to play out.
   startParcelOpening(){
-    const walkDef = COURIER_ANIMS.walk;
-    this.playerSprite.anims.stop();
-    this.playerSprite.setTexture(walkDef.atlasKey, `${walkDef.prefix}008${walkDef.suffix}`);
+    this.setCourierAnim('raise');
 
     this.time.delayedCall(PARCEL_OPEN_DELAY, ()=>{
       // play() first so the sprite's current frame becomes the animation's frame before
