@@ -416,17 +416,23 @@ const BRAND_GLOW = 0xc79cf5;
 const BRAND_DEEP = 0x5b1fa6;
 
 const LEVEL_DISTANCE = 3000;
-const ARRIVAL_SPEED = 150;
+// Pace of the whole arrival: the machine's slide-in, the world scroll behind it, and the
+// courier's walk all run at this speed. The walk cycle's frame rate was authored against
+// WALK_CYCLE_TUNED_SPEED, so setCourierAnim() scales the animation by the ratio between the two —
+// otherwise raising this makes the courier's feet skate along the ground.
+const ARRIVAL_SPEED = 220;
+const WALK_CYCLE_TUNED_SPEED = 150;
 // Arrival beats: the courier stops in front of the machine, holds for a moment, then the machine
-// opens with the confetti, and the win screen follows once that has played out.
+// opens with the confetti, and the win screen follows once that has played out. The door
+// animation itself is 30 frames at ~24fps (~1.3s), so WIN_SCREEN_DELAY only needs to outlast
+// that — the rest would just be staring at an open locker.
 const PARCEL_OPEN_DELAY = 500;
-const WIN_SCREEN_DELAY = 3000;
-// The widest obstacle (the hole, ~244px wide once scaled) needs about 460 "meters" of travel
-// between spawning off the right edge and clearing the left edge, at the constant 2-pixels-per-meter
-// scroll ratio the game uses. Stopping spawns 500m before LEVEL_DISTANCE (comfortably more than
-// that 460m) guarantees the road is clear before the arrival sequence begins, no matter how long
-// the level is — derived from LEVEL_DISTANCE rather than hardcoded so it keeps working if that changes.
-const LAST_OBSTACLE_DISTANCE = LEVEL_DISTANCE - 500;
+const WIN_SCREEN_DELAY = 1600;
+// Spawning stops this far out so the road is clear by the time the courier walks it. Obstacles
+// keep scrolling through the machine's slide-in (see update()), which buys some of that clearing
+// time back, so the gap doesn't have to cover the whole journey off-screen on its own — it only
+// has to get the last one behind the courier's starting mark before the camera stops.
+const LAST_OBSTACLE_DISTANCE = LEVEL_DISTANCE - 370;
 const DURABILITY_MAX = 100;
 // Measured directly from the background art (1536x1024 source): the purple brick band starts
 // at y=885 (character + ground obstacles stand on its top edge) and the light curb strip above
@@ -682,6 +688,9 @@ class RunnerScene extends Phaser.Scene {
     this.playerSprite.setOrigin(def.originX, COURIER_ANIM_ORIGIN_Y);
     this.playerSprite.setScale(this.playerBaseScale * def.heightRatio);
     this.playerSprite.play(key);
+    // The walk is the one cycle tied to real ground movement, so its playback has to track
+    // ARRIVAL_SPEED or the feet slide; the run and duck cycles are decoupled and play at 1x.
+    this.playerSprite.anims.timeScale = (key === 'walk') ? ARRIVAL_SPEED / WALK_CYCLE_TUNED_SPEED : 1;
     this._currentAnimKey = key;
   }
 
@@ -908,8 +917,9 @@ class RunnerScene extends Phaser.Scene {
     // the background keeps scrolling (at the calmer arrival pace once arriving begins), so the
     // machine sliding in reads as the camera still moving, not an object drifting over a static
     // scene. After it settles, we simply stop touching these and the last frame drawn stays put.
-    if(!this.arriving || (this.finish && !this.finish.settled)){
-      const scrollSpeed = this.arriving ? ARRIVAL_SPEED : gameState.speed;
+    const cameraMoving = !this.arriving || (this.finish && !this.finish.settled);
+    const scrollSpeed = this.arriving ? ARRIVAL_SPEED : gameState.speed;
+    if(cameraMoving){
       const groundDx = scrollSpeed*dt;
       const skyDx = groundDx * BG_PARALLAX_FACTOR; // distant layer scrolls slower — the parallax
       this.updateBgPanelSet(this.bgTopPanels, skyDx, TOP_BACKGROUND_DEFS, ()=>lastTopBgKey, k=>lastTopBgKey=k);
@@ -945,10 +955,16 @@ class RunnerScene extends Phaser.Scene {
         this.spawnTimer = 0;
         this.spawnObstacle();
       }
+    }
 
+    // Obstacles sit on the ground, so they scroll whenever the camera does — including through
+    // the machine's slide-in. That lets a straggler keep drifting away rather than freezing
+    // mid-road the instant the level ends, which is what let the spawn cutoff move later.
+    // Collisions stop as soon as the arrival begins: the courier is on rails from there.
+    if(cameraMoving){
       for(let i=this.obstacles.length-1;i>=0;i--){
         const o = this.obstacles[i];
-        o.x -= gameState.speed*dt;
+        o.x -= scrollSpeed*dt;
         this.updateObstacleVisual(o);
 
         // Checked every frame while inside the zone (not just once on first contact) — a
@@ -956,19 +972,21 @@ class RunnerScene extends Phaser.Scene {
         // zone, then keep descending/standing-up into it for the rest of the overlap without
         // ever failing, which looked like "jumping into" it for free. o.hit now only locks once
         // an actual hit lands, so a late mistake during the overlap still gets caught.
-        const dx = Math.abs(o.x - this.playerX);
-        if(!o.hit && dx < o.width*0.5){
-          let collided = false;
-          if(o.type==='ground'){
-            const clearance = this.groundY - this.playerContainer.y;
-            if(clearance < 46) collided = true;
-          } else {
-            const ducking = gameState.isDucking && !gameState.isJumping;
-            if(!ducking) collided = true;
-          }
-          if(collided){
-            o.hit = true;
-            this.applyDamage(o.type);
+        if(!this.arriving){
+          const dx = Math.abs(o.x - this.playerX);
+          if(!o.hit && dx < o.width*0.5){
+            let collided = false;
+            if(o.type==='ground'){
+              const clearance = this.groundY - this.playerContainer.y;
+              if(clearance < 46) collided = true;
+            } else {
+              const ducking = gameState.isDucking && !gameState.isJumping;
+              if(!ducking) collided = true;
+            }
+            if(collided){
+              o.hit = true;
+              this.applyDamage(o.type);
+            }
           }
         }
 
