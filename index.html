@@ -180,34 +180,17 @@
      card, the way the canvas-drawn version used to — 1em here is the old design's 10px, so the
      font-size rules mirror #game-wrap's own width rules. */
   #hud{
-    position:absolute; top:1.2em; left:1.2em; right:1.2em; height:5em;
+    position:absolute; top:1.6em; left:1.6em;
     z-index:6; pointer-events:none;
     font-size:calc(min(100vw, 720px) / 72);
-    background:rgba(20,11,34,0.6);
-    border:1px solid rgba(147,57,242,0.3);
-    border-radius:1em;
-    display:flex; align-items:center;
-    padding:0 1.4em;
+    display:flex; align-items:center; gap:0.5em;
   }
-  #hud.hud-hidden{ display:none; }
-  .hud-label{
-    font-family:'Inter',sans-serif; font-size:0.9em; line-height:1.2;
-    text-transform:uppercase; letter-spacing:0.1em; color:#b9a9d6; white-space:nowrap;
-  }
-  .hud-cond{
-    position:absolute; left:50%; transform:translateX(-50%);
-    display:flex; flex-direction:column; align-items:center; gap:0.35em;
-  }
-  .hud-bar{
-    width:26em; max-width:100%; height:1.4em; border-radius:0.8em;
-    background:rgba(20,11,34,0.6); overflow:hidden;
-  }
-  .hud-bar-fill{ height:100%; width:100%; border-radius:0.8em; background:var(--brand); }
+  .heart{ width:2.6em; height:auto; display:block; }
   @media (min-width: 1200px){
     #hud{ font-size:calc(min(75vw, 1200px) / 72); }
   }
   @media (pointer: coarse) and (orientation: portrait){
-    /* matches the old PORTRAIT_HUD_SCALE: the strip reads thin against the taller portrait canvas */
+    /* matches the old PORTRAIT_HUD_SCALE: the row reads small against the taller portrait canvas */
     #hud{ font-size:calc(min(100vw, 720px) / 72 * 1.35); }
   }
   /* Confetti is DOM rather than Phaser particles for one reason: the win overlay is opaque and
@@ -374,9 +357,6 @@
   </div>
   <div id="win-overlay" class="overlay hidden">
     <h1>Delivered <span class="accent">safely</span></h1>
-    <div class="stat-row">
-      <div class="stat"><div class="num" id="win-condition">100%</div><div class="lbl">Condition</div></div>
-    </div>
     <div class="app-promo">
       <div class="app-promo-text">Download Venipak app on Android and iOS</div>
       <div class="app-badges">
@@ -389,10 +369,9 @@
   </div>
   <div id="confetti"></div>
   <div id="hud">
-    <div class="hud-cond">
-      <div class="hud-label">Package condition</div>
-      <div class="hud-bar"><div class="hud-bar-fill" id="hud-bar-fill"></div></div>
-    </div>
+    <img class="heart" src="assets/images/icons/heart.png" alt="">
+    <img class="heart" src="assets/images/icons/heart.png" alt="">
+    <img class="heart" src="assets/images/icons/heart.png" alt="">
   </div>
   <div id="hint"></div>
   <div id="watermark">
@@ -449,7 +428,11 @@ const WIN_FADE_MS = 1200;
 // time back, so the gap doesn't have to cover the whole journey off-screen on its own — it only
 // has to get the last one behind the courier's starting mark before the camera stops.
 const LAST_OBSTACLE_DISTANCE = LEVEL_DISTANCE - 370;
-const DURABILITY_MAX = 100;
+// Hearts shown in the HUD, and the hits the player can absorb. Each hit empties the rightmost
+// remaining heart; the hit after the last one is emptied ends the run — so MAX_HEARTS + 1 hits.
+const MAX_HEARTS = 3;
+const HEART_FULL_SRC = 'assets/images/icons/heart.png';
+const HEART_EMPTY_SRC = 'assets/images/icons/heart-empty.png';
 // Measured directly from the background art (1536x1024 source): the purple brick band starts
 // at y=885 (character + ground obstacles stand on its top edge) and the light curb strip above
 // it runs from y=831 to y=884 (obstacle-post bottoms land there so they read as posts planted
@@ -462,7 +445,6 @@ const POST_Y_RATIO = 831/1024;
 // its own band comfortably allows.
 const GROUND_Y_SHIFT = 50;
 const POST_Y_SHIFT = 20;
-const DAMAGE = { ground: 30, air: 26 };
 const GRAVITY = 1600;
 const JUMP_VELOCITY = -620;
 
@@ -475,7 +457,7 @@ const IS_PORTRAIT_LAYOUT = window.matchMedia('(pointer: coarse) and (orientation
 const PORTRAIT_OBJECT_SCALE = IS_PORTRAIT_LAYOUT ? 1.2 : 1;
 const PORTRAIT_COURIER_SCALE = IS_PORTRAIT_LAYOUT ? 1.4 : 1;
 
-let gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:0, isJumping:false, isDucking:false };
+let gameState = { distance:0, hearts:MAX_HEARTS, speed:340, running:true, vy:0, y:0, isJumping:false, isDucking:false };
 // Survive across restarts (the Phaser game instance gets destroyed/recreated, but these
 // top-level variables don't) so back-to-back runs don't show the same skyline/ground twice in a row.
 let lastTopBgKey = null;
@@ -599,7 +581,7 @@ class RunnerScene extends Phaser.Scene {
     // the courier runs halfway between its pre-shift and post-shift ground line, while ground
     // obstacles and the parcel machine keep the full shift
     this.courierY = h*GROUND_Y_RATIO + GROUND_Y_SHIFT/2;
-    gameState = { distance:0, durability:DURABILITY_MAX, speed:340, running:true, vy:0, y:this.courierY, isJumping:false, isDucking:false };
+    gameState = { distance:0, hearts:MAX_HEARTS, speed:340, running:true, vy:0, y:this.courierY, isJumping:false, isDucking:false };
 
     // The parcel machine's opening animation (plays once, in place of the static image, when
     // the courier reaches it) shares the same create-once-reuse pattern as the courier's anims.
@@ -655,7 +637,7 @@ class RunnerScene extends Phaser.Scene {
 
     // The HUD lives in the DOM (see #hud) rather than being drawn here, so it stays sharp when
     // the canvas is scaled up; this scene only feeds it values — see updateHud().
-    this.hudBarFillEl = document.getElementById('hud-bar-fill');
+    this.heartEls = [...document.querySelectorAll('#hud .heart')];
     this.updateHud();
 
     this.input.keyboard.on('keydown-SPACE', ()=>this.tryJump());
@@ -987,7 +969,7 @@ class RunnerScene extends Phaser.Scene {
             }
             if(collided){
               o.hit = true;
-              this.applyDamage(o.type);
+              this.applyDamage();
             }
           }
         }
@@ -1007,20 +989,24 @@ class RunnerScene extends Phaser.Scene {
     this.updateHud();
   }
 
+  // Hearts empty from the right, so the leftmost ones are the last to go.
   updateHud(){
-    const pct = gameState.durability/DURABILITY_MAX;
-    this.hudBarFillEl.style.width = (pct*100)+'%';
-    this.hudBarFillEl.style.background = pct>0.5 ? '#9339f2' : (pct>0.25 ? '#d9a548' : '#7a2e2e');
+    this.heartEls.forEach((el, i)=>{
+      el.src = i < gameState.hearts ? HEART_FULL_SRC : HEART_EMPTY_SRC;
+    });
   }
 
-  applyDamage(type){
-    gameState.durability = Math.max(0, gameState.durability - DAMAGE[type]);
+  applyDamage(){
     this.cameras.main.flash(120,224,122,122,false);
     this.cameras.main.shake(140,0.006);
     this.tweens.add({ targets:this.playerContainer, scaleX:0.88, scaleY:1.1, duration:80, yoyo:true });
-    if(gameState.durability<=0){
-      this.endGame(false);
+    if(gameState.hearts > 0){
+      gameState.hearts--;
+      this.updateHud();
+      return;
     }
+    // no hearts left to lose — this is the hit that ends the run
+    this.endGame(false);
   }
 
   endGame(won){
@@ -1029,7 +1015,6 @@ class RunnerScene extends Phaser.Scene {
     if(won){
       // No extra beat here: the win screen's timing is already orchestrated by the arrival
       // (PARCEL_OPEN_DELAY then WIN_SCREEN_DELAY), and it fades up rather than cutting in.
-      document.getElementById('win-condition').textContent = Math.round(gameState.durability)+'%';
       showWinOverlay();
       return;
     }
