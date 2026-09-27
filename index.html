@@ -7,6 +7,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
+<script>
+// Decide the layout once, here, before anything paints. Phaser's canvas size is fixed when the
+// game boots, so the CSS that shapes the card must not be free to re-decide later: a media query
+// would flip the card to a different aspect ratio on rotation, on a hybrid device, or whenever the
+// primary pointer changes, leaving the box mismatched against the canvas — which renders as a
+// stretched picture. Everything layout-critical keys off this class instead, and the script below
+// reads the same class back, so the two can never disagree.
+if(window.matchMedia('(pointer: coarse)').matches){
+  document.documentElement.classList.add('touch-layout');
+}
+</script>
 <style>
   :root{
     --brand:#9339f2;
@@ -27,9 +38,13 @@
   }
   #game-wrap{
     position:relative;
-    width:min(100vw, 720px);
+    /* The third term is what keeps the card from ever being taller than the viewport. Capping the
+       height instead (max-height) would clamp the box while the width stayed put, so the box ratio
+       would stop matching the canvas — and since the rule below forces the canvas to fill the box,
+       that shows up as a stretched or squashed picture. Capping the *width* by what still fits
+       vertically keeps the aspect ratio exact at every viewport shape. */
+    width:min(100vw, 720px, 100vh * 16 / 9);
     aspect-ratio: 16/9;
-    max-height:100vh;
     box-shadow:0 24px 70px rgba(0,0,0,0.65), 0 0 0 1px rgba(147,57,242,0.15);
     border-radius:16px;
     overflow:hidden;
@@ -43,7 +58,7 @@
      of staying pinned to the same fixed size regardless of how much room is available. */
   @media (min-width: 1200px){
     #game-wrap{
-      width:min(75vw, 1200px);
+      width:min(75vw, 1200px, 100vh * 16 / 9);
     }
   }
   #game-wrap canvas{ display:block; width:100% !important; height:100% !important; }
@@ -62,13 +77,12 @@
     margin-top:16px;
     gap:16px;
   }
-  @media (pointer: coarse) and (orientation: portrait){
-    #game-wrap{
-      aspect-ratio: 720/900;
-      max-height: calc(100vh - 90px);
-    }
-    #mobile-controls{ display:flex; }
+  html.touch-layout #game-wrap{
+    aspect-ratio: 720/900;
+    /* same reasoning as above; the 90px is the jump/duck row that sits below the card */
+    width:min(100vw, 720px, (100vh - 90px) * 720 / 900);
   }
+  html.touch-layout #mobile-controls{ display:flex; }
   .pad-btn{
     width:60px; height:60px; border-radius:50%;
     background:rgba(243,233,214,0.1);
@@ -155,6 +169,16 @@
   .stat{text-align:center;}
   .stat .num{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:26px; color:var(--ink);}
   .stat .lbl{font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted);}
+  .promo-code{
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    border:1.5px dashed var(--brand); border-radius:12px;
+    background:var(--paper); padding:8px 22px; margin-bottom:22px; flex-shrink:0;
+  }
+  .promo-code-label{ font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); }
+  .promo-code-value{
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:24px;
+    letter-spacing:0.06em; color:var(--brand-deep);
+  }
   .app-promo{ display:flex; flex-direction:column; align-items:center; gap:8px; margin:2px 0 0; flex-shrink:0; }
   .app-promo-text{ font-size:12.5px; color:var(--ink); font-weight:600; max-width:300px; }
   .app-badges{ display:flex; align-items:center; justify-content:center; gap:10px; }
@@ -189,10 +213,11 @@
   @media (min-width: 1200px){
     #hud{ font-size:calc(min(75vw, 1200px) / 72); }
   }
-  @media (pointer: coarse) and (orientation: portrait){
-    /* matches the old PORTRAIT_HUD_SCALE: the row reads small against the taller portrait canvas */
-    #hud{ font-size:calc(min(100vw, 720px) / 72 * 1.35); }
-  }
+  /* matches the old PORTRAIT_HUD_SCALE: the row reads small against the taller portrait canvas */
+  html.touch-layout #hud{ font-size:calc(min(100vw, 720px) / 72 * 1.35); gap:0.75em; }
+  /* A phone's card is half the width of the desktop one, so the same em size lands much smaller
+     in real pixels there — this brings the hearts back up by half again. */
+  html.touch-layout .heart{ width:3.9em; }
   /* Confetti is DOM rather than Phaser particles for one reason: the win overlay is opaque and
      sits above the canvas, so canvas confetti vanishes the moment the success screen appears.
      At z-index 15 this layer sits above the overlay (10) and below the controls (20), so the
@@ -216,25 +241,6 @@
   #watermark{ position:absolute; bottom:10px; right:14px; z-index:6; opacity:0.55; pointer-events:none; }
   #watermark img{ height:13px; width:auto; display:block; }
 
-  #top-controls{
-    position:absolute; top:10px; right:10px; z-index:20;
-    display:flex; gap:6px;
-  }
-  .icon-btn{
-    width:32px; height:32px; border-radius:8px;
-    background:rgba(20,11,34,0.55);
-    border:1px solid rgba(243,233,214,0.2);
-    display:flex; align-items:center; justify-content:center;
-    cursor:pointer; padding:0;
-    touch-action:manipulation; -webkit-tap-highlight-color:transparent;
-  }
-  .icon-btn svg{ width:16px; height:16px; display:block; pointer-events:none; }
-  .icon-btn:active{ background:rgba(147,57,242,0.35); }
-  /* fullscreen is a mobile/tablet nicety (pairs with the landscape-lock attempt) — desktop
-     users already have their own window controls, so skip cluttering the corner for them */
-  @media (pointer: fine){
-    #fullscreen-btn{ display:none; }
-  }
   /* The game stays a fixed 16:9 landscape card at all times — below 720px wide, its width always
      equals the viewport width, so its height is exactly width*9/16 (e.g. ~202px at 360px wide).
      Below that, menu content has to shrink to actually fit instead of just scrolling internally. */
@@ -250,6 +256,9 @@
     .stat .num{ font-size:15px; }
     .stat .lbl{ font-size:7px; }
     .app-promo{ gap:4px; margin:0; }
+    .promo-code{ padding:4px 14px; gap:1px; border-radius:8px; margin-bottom:11px; }
+    .promo-code-label{ font-size:7px; }
+    .promo-code-value{ font-size:15px; }
     .app-promo-text{ font-size:8.5px; max-width:220px; }
     .app-badges{ gap:6px; }
     .app-badges img{ height:24px; }
@@ -270,25 +279,26 @@
      screens there were left tiny with most of the card empty. Scale them back up for that case
      only; this block sits after the one above so it wins, and is scoped to the two end screens so
      the start and loading screens keep their own tuning. */
-  @media (pointer: coarse) and (orientation: portrait){
-    #win-overlay, #gameover-overlay{ padding:12px 18px; }
-    #win-overlay h1, #gameover-overlay h1{ font-size:26px; margin:0 0 10px; }
-    #win-overlay .stat-row, #gameover-overlay .stat-row{ gap:22px; margin-bottom:10px; }
-    #win-overlay .stat .num, #gameover-overlay .stat .num{ font-size:26px; }
-    #win-overlay .stat .lbl, #gameover-overlay .stat .lbl{ font-size:11px; }
-    #win-overlay .btn, #gameover-overlay .btn{ font-size:16px; padding:11px 28px; border-radius:10px; box-shadow:0 4px 0 #4a2570; }
-    #win-overlay .btn-stack, #gameover-overlay .btn-stack{ gap:9px; margin-top:7px; }
-    #win-overlay .app-promo{ gap:8px; margin:0; }
-    #win-overlay .app-promo-text{ font-size:14px; max-width:290px; }
-    #win-overlay .app-badges{ gap:10px; }
-    #win-overlay .app-badges img{ height:38px; }
-    #start-overlay .brand-lockup{ margin-bottom:18px; }
-    #start-overlay .brand-lockup img{ height:26px; }
-    #start-overlay .brand-lockup .pipe{ height:20px; }
-    #start-overlay .brand-lockup .tag{ font-size:13px; }
-    #start-overlay h1{ font-size:30px; margin:0 0 20px; }
-    #start-overlay .btn{ font-size:18px; padding:14px 34px; border-radius:11px; box-shadow:0 4px 0 #4a2570; }
-  }
+  html.touch-layout #win-overlay, html.touch-layout #gameover-overlay{ padding:12px 18px; }
+  html.touch-layout #win-overlay h1, html.touch-layout #gameover-overlay h1{ font-size:26px; margin:0 0 10px; }
+  html.touch-layout #win-overlay .stat-row, html.touch-layout #gameover-overlay .stat-row{ gap:22px; margin-bottom:10px; }
+  html.touch-layout #win-overlay .stat .num, html.touch-layout #gameover-overlay .stat .num{ font-size:26px; }
+  html.touch-layout #win-overlay .stat .lbl, html.touch-layout #gameover-overlay .stat .lbl{ font-size:11px; }
+  html.touch-layout #win-overlay .btn, html.touch-layout #gameover-overlay .btn{ font-size:16px; padding:11px 28px; border-radius:10px; box-shadow:0 4px 0 #4a2570; }
+  html.touch-layout #win-overlay .btn-stack, html.touch-layout #gameover-overlay .btn-stack{ gap:9px; margin-top:7px; }
+  html.touch-layout #win-overlay .app-promo{ gap:8px; margin:0; }
+  html.touch-layout #win-overlay .promo-code{ padding:9px 24px; gap:3px; border-radius:12px; margin-bottom:24px; }
+  html.touch-layout #win-overlay .promo-code-label{ font-size:11px; }
+  html.touch-layout #win-overlay .promo-code-value{ font-size:26px; }
+  html.touch-layout #win-overlay .app-promo-text{ font-size:14px; max-width:290px; }
+  html.touch-layout #win-overlay .app-badges{ gap:10px; }
+  html.touch-layout #win-overlay .app-badges img{ height:38px; }
+  html.touch-layout #start-overlay .brand-lockup{ margin-bottom:18px; }
+  html.touch-layout #start-overlay .brand-lockup img{ height:26px; }
+  html.touch-layout #start-overlay .brand-lockup .pipe{ height:20px; }
+  html.touch-layout #start-overlay .brand-lockup .tag{ font-size:13px; }
+  html.touch-layout #start-overlay h1{ font-size:30px; margin:0 0 20px; }
+  html.touch-layout #start-overlay .btn{ font-size:18px; padding:14px 34px; border-radius:11px; box-shadow:0 4px 0 #4a2570; }
   /* The card itself already grows past 1200px wide (see #game-wrap above); scale the menu
      content up to match so it fills the extra room instead of sitting small in the middle
      of a much bigger card. */
@@ -304,6 +314,9 @@
     .stat .num{ font-size:34px; }
     .stat .lbl{ font-size:13px; }
     .app-promo{ gap:14px; margin:6px 0 0; }
+    .promo-code{ padding:13px 34px; gap:5px; border-radius:16px; margin-bottom:32px; }
+    .promo-code-label{ font-size:14px; }
+    .promo-code-value{ font-size:34px; }
     #app-qr{ width:120px; height:120px; }
     .app-promo-text{ font-size:18px; max-width:440px; }
     .app-badges{ gap:16px; }
@@ -325,12 +338,6 @@
 <body>
 <div id="game-wrap">
   <div id="phaser-container"></div>
-  <div id="top-controls">
-    <button class="icon-btn" id="fullscreen-btn" aria-label="Toggle fullscreen">
-      <svg id="fullscreen-enter-icon" viewBox="0 0 24 24" fill="none"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <svg id="fullscreen-exit-icon" viewBox="0 0 24 24" fill="none" style="display:none;"><path d="M9 4v5H4M15 4v5h5M15 20v-5h5M9 20v-5H4" stroke="#f3e9d6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
-  </div>
   <div id="start-overlay" class="overlay">
     <div class="brand-lockup">
       <img src="assets/images/logos/venipak-logo-purple.svg" alt="Venipak">
@@ -357,6 +364,10 @@
   </div>
   <div id="win-overlay" class="overlay hidden">
     <h1>Delivered <span class="accent">safely</span></h1>
+    <div class="promo-code">
+      <div class="promo-code-label">Your discount code</div>
+      <div class="promo-code-value" id="discount-code">APP100</div>
+    </div>
     <div class="app-promo">
       <div class="app-promo-text">Download Venipak app on Android and iOS</div>
       <div class="app-badges">
@@ -387,10 +398,11 @@
   </button>
 </div>
 <script>
-// --- Edit me: the win screen's app promo. ---
+// --- Edit me: the win screen's reward and app promo. ---
 // Leave a URL empty and that badge simply renders as a non-clickable image. Which badge and
 // which line of copy appear depends on the device — see detectMobileOS() further down.
 // DOWNLOAD_URL is the desktop equivalent: one button in place of the two store badges.
+const DISCOUNT_CODE = 'APP100';
 const APP_STORE_URL = 'https://apps.apple.com/';
 const GOOGLE_PLAY_URL = 'https://play.google.com/';
 const DOWNLOAD_URL = 'https://venipak.com/lt/app/download/';
@@ -448,12 +460,14 @@ const POST_Y_SHIFT = 20;
 const GRAVITY = 1600;
 const JUMP_VELOCITY = -620;
 
-// Matches the CSS breakpoint on #game-wrap: a touch phone held upright gets a taller logical
-// canvas (see config.height below) so the same fixed-pixel character/obstacle/HUD art reads
-// smaller against the extra headroom than it does at 16:9. PORTRAIT_OBJECT_SCALE bumps those
-// fixed sizes back up on portrait only, so they read the same size as before despite the taller
-// canvas — decided once at load, same as the rest of the game's sizing.
-const IS_PORTRAIT_LAYOUT = window.matchMedia('(pointer: coarse) and (orientation: portrait)').matches;
+// Matches the CSS breakpoint on #game-wrap: a touch device gets a taller logical canvas (see
+// config.height below) so the same fixed-pixel character/obstacle/HUD art reads smaller against
+// the extra headroom than it does at 16:9. PORTRAIT_OBJECT_SCALE bumps those fixed sizes back up
+// there, so they read the same size as before despite the taller canvas.
+// Read back the class the head script set, rather than re-running the media query: that is what
+// guarantees the canvas Phaser builds matches the box the CSS draws, for the life of the page.
+// The player can then rotate freely — the card just scales to fit and never distorts.
+const IS_PORTRAIT_LAYOUT = document.documentElement.classList.contains('touch-layout');
 const PORTRAIT_OBJECT_SCALE = IS_PORTRAIT_LAYOUT ? 1.2 : 1;
 const PORTRAIT_COURIER_SCALE = IS_PORTRAIT_LAYOUT ? 1.4 : 1;
 
@@ -1048,34 +1062,7 @@ let game = null;
   if(el) el.addEventListener('contextmenu', function(e){ e.preventDefault(); });
 });
 
-// --- Fullscreen toggle ---
-// No browser lets a page force-rotate the physical device, and iOS Safari doesn't support the
-// Orientation Lock API at all outside an installed home-screen PWA — so this is a manual,
-// user-triggered control rather than something automatic: going fullscreen is also the required
-// context for screen.orientation.lock() to succeed on the browsers that do support it.
-function updateFullscreenIcon(){
-  const isFs = !!document.fullscreenElement;
-  document.getElementById('fullscreen-enter-icon').style.display = isFs ? 'none' : '';
-  document.getElementById('fullscreen-exit-icon').style.display = isFs ? '' : 'none';
-}
-document.addEventListener('fullscreenchange', updateFullscreenIcon);
-updateFullscreenIcon();
-bindTap(document.getElementById('fullscreen-btn'), async function(){
-  try{
-    if(document.fullscreenElement){
-      await document.exitFullscreen();
-    } else {
-      // No orientation lock here: portrait now has its own comfortable taller layout with
-      // on-screen buttons (see IS_PORTRAIT_LAYOUT above), so forcing landscape on fullscreen
-      // would fight that instead of just making the existing layout bigger.
-      await document.documentElement.requestFullscreen();
-    }
-  }catch(e){
-    // Fullscreen unsupported or denied — no fallback needed, the game works windowed too.
-  }
-});
-
-// On-screen jump/duck buttons (shown below the canvas on touch devices in portrait — see CSS)
+// On-screen jump/duck buttons (shown below the canvas on touch devices — see CSS)
 // drive the same scene methods the keyboard/tap-canvas controls already use. Wired with
 // pointerdown/up (not click) so duck can be held down like the canvas tap-and-hold gesture.
 function getRunnerScene(){
@@ -1235,6 +1222,8 @@ function bindTap(el, handler){
 bindTap(document.getElementById('start-btn'), startGame);
 bindTap(document.getElementById('retry-btn'), startGame);
 bindTap(document.getElementById('home-btn-go'), goHome);
+
+document.getElementById('discount-code').textContent = DISCOUNT_CODE;
 
 // Store badges and the desktop Download button point at the URLs set at the top of this script;
 // an unset one stays hrefless so it renders as plain content rather than a link going nowhere.
