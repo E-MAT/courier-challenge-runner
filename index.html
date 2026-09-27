@@ -222,6 +222,24 @@ if(window.matchMedia('(pointer: coarse)').matches){
      sits above the canvas, so canvas confetti vanishes the moment the success screen appears.
      At z-index 15 this layer sits above the overlay (10) and below the controls (20), so the
      celebration keeps falling over the success card. */
+  /* Portrait-only on touch. No browser lets a page actually pin the device's orientation —
+     screen.orientation.lock() needs a fullscreen context and iOS Safari doesn't implement it —
+     so this asks for it instead, and applyOrientationGate() pauses the run behind it.
+     Gated on the layout class plus live orientation rather than on (pointer: coarse): the pointer
+     type can flip spuriously mid-session, while the class is fixed at load and orientation is a
+     genuine live signal. */
+  #rotate-overlay{
+    display:none;
+    position:fixed; inset:0; z-index:100;
+    background:var(--ink); color:var(--brand-pale);
+    flex-direction:column; align-items:center; justify-content:center; gap:18px;
+    text-align:center; padding:24px;
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:18px;
+  }
+  #rotate-overlay svg{ width:54px; height:54px; }
+  @media (orientation: landscape){
+    html.touch-layout #rotate-overlay{ display:flex; }
+  }
   #confetti{ position:absolute; inset:0; z-index:15; pointer-events:none; overflow:hidden; display:none; }
   #confetti.active{ display:block; }
   .confetti-piece{
@@ -388,6 +406,13 @@ if(window.matchMedia('(pointer: coarse)').matches){
   <div id="watermark">
     <img src="assets/images/logos/venipak-logo-white.svg" alt="Venipak">
   </div>
+</div>
+<div id="rotate-overlay">
+  <svg viewBox="0 0 48 48" fill="none">
+    <path d="M10 24A14 14 0 1 1 24 38" stroke="#ebe4fe" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M24 31.5 24 44.5 16.5 38z" fill="#ebe4fe"/>
+  </svg>
+  <div>Turn your device upright to play</div>
 </div>
 <div id="mobile-controls">
   <button class="pad-btn" id="duck-btn" aria-label="Duck">
@@ -653,6 +678,7 @@ class RunnerScene extends Phaser.Scene {
     // the canvas is scaled up; this scene only feeds it values — see updateHud().
     this.heartEls = [...document.querySelectorAll('#hud .heart')];
     this.updateHud();
+    applyOrientationGate(); // covers a run started while the phone is already sideways
 
     this.input.keyboard.on('keydown-SPACE', ()=>this.tryJump());
     this.input.keyboard.on('keydown-UP', ()=>this.tryJump());
@@ -1061,6 +1087,20 @@ let game = null;
   const el = document.getElementById(id);
   if(el) el.addEventListener('contextmenu', function(e){ e.preventDefault(); });
 });
+
+// --- Portrait-only on touch ---
+// #rotate-overlay is raised by CSS alone; this stops the clock behind it, so a player who turns
+// the phone mid-run doesn't come back to a crash they never saw coming. Pausing the scene freezes
+// its delayed calls too, so a half-finished arrival sequence holds its place as well.
+const landscapeQuery = window.matchMedia('(orientation: landscape)');
+function applyOrientationGate(){
+  if(!IS_PORTRAIT_LAYOUT) return; // desktop is free to be any shape
+  const scene = game ? game.scene.getScene('runner') : null;
+  if(!scene) return;
+  if(landscapeQuery.matches) scene.scene.pause();
+  else scene.scene.resume();
+}
+landscapeQuery.addEventListener('change', applyOrientationGate);
 
 // On-screen jump/duck buttons (shown below the canvas on touch devices — see CSS)
 // drive the same scene methods the keyboard/tap-canvas controls already use. Wired with
