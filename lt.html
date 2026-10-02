@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="lt">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Venipak — Courier Challenge</title>
+<title>Venipak — Kurjerio iššūkis</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
@@ -169,10 +169,12 @@ if(window.matchMedia('(pointer: coarse)').matches){
   .stat{text-align:center;}
   .stat .num{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:26px; color:var(--ink);}
   .stat .lbl{font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted);}
+  .win-prize{ font-size:14px; font-weight:500; color:var(--ink); margin-bottom:10px; flex-shrink:0; }
+  .win-prize strong{ font-weight:800; }
   .promo-code{
     display:flex; flex-direction:column; align-items:center; gap:3px;
     border:1.5px dashed var(--brand); border-radius:12px;
-    background:var(--paper); padding:8px 22px; margin-bottom:22px; flex-shrink:0;
+    background:var(--paper); padding:8px 22px; margin-bottom:10px; flex-shrink:0;
     cursor:pointer; user-select:none; -webkit-user-select:none;
     -webkit-tap-highlight-color:transparent; transition:transform 0.12s ease;
   }
@@ -181,6 +183,7 @@ if(window.matchMedia('(pointer: coarse)').matches){
      cell, so the box always keeps the width of the wider one and nothing shifts on the swap. */
   .promo-code.copied{ border-style:solid; }
   .promo-code.copied .promo-code-label{ color:var(--brand); }
+  .promo-note{ font-size:10.5px; line-height:1.35; color:var(--muted); max-width:370px; margin-bottom:16px; flex-shrink:0; }
   .promo-code-label{ font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); display:grid; }
   .promo-code-label > span{ grid-area:1 / 1; }
   .promo-code-label .label-copied,
@@ -285,9 +288,11 @@ if(window.matchMedia('(pointer: coarse)').matches){
     .stat .num{ font-size:15px; }
     .stat .lbl{ font-size:7px; }
     .app-promo{ gap:4px; margin:0; }
-    .promo-code{ padding:4px 14px; gap:1px; border-radius:8px; margin-bottom:11px; }
+    .win-prize{ font-size:9px; margin-bottom:5px; }
+    .promo-code{ padding:4px 14px; gap:1px; border-radius:8px; margin-bottom:5px; }
     .promo-code-label{ font-size:7px; }
     .promo-code-value{ font-size:15px; }
+    .promo-note{ font-size:7px; max-width:230px; margin-bottom:8px; }
     .app-promo-text{ font-size:8.5px; max-width:220px; }
     .app-badges{ gap:6px; }
     .app-badges img{ height:24px; }
@@ -316,9 +321,11 @@ if(window.matchMedia('(pointer: coarse)').matches){
   html.touch-layout #win-overlay .btn, html.touch-layout #gameover-overlay .btn{ font-size:16px; padding:11px 28px; border-radius:10px; box-shadow:0 4px 0 #4a2570; }
   html.touch-layout #win-overlay .btn-stack, html.touch-layout #gameover-overlay .btn-stack{ gap:9px; margin-top:7px; }
   html.touch-layout #win-overlay .app-promo{ gap:8px; margin:0; }
-  html.touch-layout #win-overlay .promo-code{ padding:9px 24px; gap:3px; border-radius:12px; margin-bottom:24px; }
+  html.touch-layout #win-overlay .win-prize{ font-size:15px; margin-bottom:10px; }
+  html.touch-layout #win-overlay .promo-code{ padding:9px 24px; gap:3px; border-radius:12px; margin-bottom:10px; }
   html.touch-layout #win-overlay .promo-code-label{ font-size:11px; }
   html.touch-layout #win-overlay .promo-code-value{ font-size:26px; }
+  html.touch-layout #win-overlay .promo-note{ font-size:11px; max-width:280px; margin-bottom:18px; }
   html.touch-layout #win-overlay .app-promo-text{ font-size:14px; max-width:290px; }
   html.touch-layout #win-overlay .app-badges{ gap:10px; }
   html.touch-layout #win-overlay .app-badges img{ height:38px; }
@@ -343,9 +350,11 @@ if(window.matchMedia('(pointer: coarse)').matches){
     .stat .num{ font-size:34px; }
     .stat .lbl{ font-size:13px; }
     .app-promo{ gap:14px; margin:6px 0 0; }
-    .promo-code{ padding:13px 34px; gap:5px; border-radius:16px; margin-bottom:32px; }
+    .win-prize{ font-size:20px; margin-bottom:14px; }
+    .promo-code{ padding:13px 34px; gap:5px; border-radius:16px; margin-bottom:14px; }
     .promo-code-label{ font-size:14px; }
     .promo-code-value{ font-size:34px; }
+    .promo-note{ font-size:14px; max-width:490px; margin-bottom:24px; }
     #app-qr{ width:120px; height:120px; }
     .app-promo-text{ font-size:18px; max-width:440px; }
     .app-badges{ gap:16px; }
@@ -371,43 +380,45 @@ if(window.matchMedia('(pointer: coarse)').matches){
     <div class="brand-lockup">
       <img src="assets/images/logos/venipak-logo-purple.svg" alt="Venipak">
       <div class="pipe"></div>
-      <div class="tag">Courier Challenge</div>
+      <div class="tag">Kurjerio iššūkis</div>
     </div>
-    <h1>Keep it <span class="accent">FRAGILE</span>-safe</h1>
+    <h1>Pristatyk siuntą <span class="accent">saugiai!</span></h1>
     <div class="howto">
-      <div class="howto-row"><span class="howto-key">&uarr;</span><span>Jump over obstacles</span></div>
-      <div class="howto-row"><span class="howto-key">&darr;</span><span>Crouch under signs</span></div>
+      <div class="howto-row"><span class="howto-key">&uarr;</span><span>Peršokti kliūtis</span></div>
+      <div class="howto-row"><span class="howto-key">&darr;</span><span>Pasilenkti žemyn</span></div>
     </div>
-    <button class="btn" id="start-btn">START DELIVERY</button>
+    <button class="btn" id="start-btn">PRADĖTI</button>
   </div>
   <div id="loading-overlay" class="overlay hidden">
-    <h1 style="font-size:20px;">Loading delivery route&hellip;</h1>
+    <h1 style="font-size:20px;">Kraunama&hellip;</h1>
     <div class="loading-track"><div class="loading-fill" id="loading-fill"></div></div>
     <div class="loading-pct" id="loading-pct">0%</div>
   </div>
   <div id="gameover-overlay" class="overlay hidden">
-    <h1 style="color:#c94f4f">OJOJOJ KAIP GAILA</h1>
+    <h1 style="color:#c94f4f">Ups, nepavyko&hellip;</h1>
     <div class="btn-stack">
-      <button class="btn" id="retry-btn">Bandyk dar kartą</button>
+      <button class="btn" id="retry-btn">BANDYK DAR KARTĄ</button>
     </div>
   </div>
   <div id="win-overlay" class="overlay hidden">
-    <h1>Delivered <span class="accent">safely</span></h1>
+    <h1>VALIO, PRISTATEI <span class="accent">SAUGIAI!</span></h1>
+    <div class="win-prize">Laimėjai <strong>NEMOKAMĄ</strong> siuntimą</div>
     <div class="promo-code">
       <div class="promo-code-label">
-        <span class="label-idle">Your discount code</span>
-        <span class="label-copied">Copied!</span>
+        <span class="label-idle">Kodas:</span>
+        <span class="label-copied">Nukopijuota!</span>
       </div>
       <div class="promo-code-value" id="discount-code">APP100</div>
     </div>
+    <div class="promo-note">Kodas galioja pirmam siuntimui tarp paštomatų Venipak programėlėje.</div>
     <div class="app-promo">
-      <div class="app-promo-text">Download Venipak app on Android and iOS</div>
+      <div class="app-promo-text">Atsisiųsk programėlę</div>
       <div class="app-badges">
         <a id="app-store-link" target="_blank" rel="noopener noreferrer"><img src="assets/images/logos/app-store.svg" alt="Download on the App Store"></a>
         <a id="google-play-link" target="_blank" rel="noopener noreferrer"><img src="assets/images/logos/google-play.svg" alt="Get it on Google Play"></a>
       </div>
-      <a class="btn" id="download-btn" target="_blank" rel="noopener noreferrer">DOWNLOAD</a>
-      <img id="app-qr" src="assets/images/app-qr-code.png" alt="QR code to download the Venipak app">
+      <a class="btn" id="download-btn" target="_blank" rel="noopener noreferrer">ATSISIŲSTI</a>
+      <img id="app-qr" src="assets/images/app-qr-code.png" alt="QR kodas Venipak programėlei atsisiųsti">
     </div>
   </div>
   <div id="confetti"></div>
@@ -426,7 +437,7 @@ if(window.matchMedia('(pointer: coarse)').matches){
     <path d="M10 24A14 14 0 1 1 24 38" stroke="#ebe4fe" stroke-width="3.2" stroke-linecap="round"/>
     <path d="M24 31.5 24 44.5 16.5 38z" fill="#ebe4fe"/>
   </svg>
-  <div>Turn your device upright to play</div>
+  <div>Pasuk telefoną vertikaliai</div>
 </div>
 <div id="mobile-controls">
   <button class="pad-btn" id="duck-btn" aria-label="Duck">
@@ -446,9 +457,9 @@ const APP_STORE_URL = 'https://apps.apple.com/lt/app/venipak-delivery-platform/i
 const GOOGLE_PLAY_URL = 'https://play.google.com/store/apps/details?id=com.venipak.delivery';
 const DOWNLOAD_URL = 'https://venipak.com/lt/app/download/';
 const APP_PROMO_TEXT = {
-  ios: 'Download Venipak app on iOS',
-  android: 'Download Venipak app on Android',
-  other: 'Download Venipak app on Android and iOS'
+  ios: 'Atsisiųsk programėlę',
+  android: 'Atsisiųsk programėlę',
+  other: 'Atsisiųsk programėlę'
 };
 
 const LEVEL_DISTANCE = 3000;
