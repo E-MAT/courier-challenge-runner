@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Venipak — Kurjerio iššūkis</title>
+<title>Kurjerio iššūkis - Venipak</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
@@ -72,11 +72,16 @@ if(window.matchMedia('(pointer: coarse)').matches){
      and obstacles are all fixed-pixel sized, so a much taller canvas makes them read as too small.
      900/720 is a middle ground between the original 16:9 and the 1:1 tried earlier — see the
      matching JS config.height. */
+  /* The row starts invisible but still holding its space — the card's width formula already
+     budgets for it, so nothing shifts when it fades in on Start (see showLoadingOverlay()). */
   #mobile-controls{
     display:none;
     margin-top:16px;
     gap:16px;
+    visibility:hidden; opacity:0;
+    transition:opacity 0.6s ease, visibility 0s linear 0.6s;
   }
+  #mobile-controls.shown{ visibility:visible; opacity:1; transition:opacity 0.6s ease; }
   html.touch-layout #game-wrap{
     aspect-ratio: 720/900;
     /* same reasoning as above; the 90px is the jump/duck row that sits below the card */
@@ -134,11 +139,9 @@ if(window.matchMedia('(pointer: coarse)').matches){
     padding:0 6px; border-radius:5px;
   }
   .overlay p{margin:2px 0 10px; font-size:13px; line-height:1.45; color:var(--muted); max-width:360px;}
-  /* Keyboard hints, so hidden by default and switched on only for a mouse/keyboard pointer.
-     Touch devices never see them: in portrait they have the on-screen jump/duck buttons, and in
-     landscape the tap-top-half/tap-bottom-half gesture — neither involves the arrow keys. */
-  .howto{ display:none; flex-direction:column; align-items:flex-start; gap:8px; margin:0 0 18px; flex-shrink:0; }
-  @media (pointer: fine){ .howto{ display:flex; } }
+  /* Control hints. The arrows read as the arrow keys on desktop and as the matching on-screen
+     jump/duck buttons on a phone, so both get the same two rows. */
+  .howto{ display:flex; flex-direction:column; align-items:flex-start; gap:8px; margin:0 0 18px; flex-shrink:0; }
   .howto-row{ display:flex; align-items:center; gap:10px; font-size:13px; line-height:1.3; color:var(--ink); }
   .howto-key{
     flex-shrink:0; width:26px; height:26px; border-radius:7px;
@@ -183,7 +186,7 @@ if(window.matchMedia('(pointer: coarse)').matches){
      cell, so the box always keeps the width of the wider one and nothing shifts on the swap. */
   .promo-code.copied{ border-style:solid; }
   .promo-code.copied .promo-code-label{ color:var(--brand); }
-  .promo-note{ font-size:10.5px; line-height:1.35; color:var(--muted); max-width:370px; margin-bottom:16px; flex-shrink:0; }
+  .promo-note{ font-size:10.5px; line-height:1.35; color:var(--muted); max-width:370px; margin-bottom:16px; flex-shrink:0; text-wrap:balance; }
   .promo-code-label{ font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); display:grid; }
   .promo-code-label > span{ grid-area:1 / 1; }
   .promo-code-label .label-copied,
@@ -210,6 +213,18 @@ if(window.matchMedia('(pointer: coarse)').matches){
     .app-badges{ display:none; }
     #download-btn{ display:inline-block; }
     #app-qr{ display:block; }
+  }
+  /* Win screen: a single centred column on a phone. On desktop the two halves sit side by side —
+     the reward and code on the left, the app on the right, split by a thin rule. */
+  .win-layout, .win-col{ display:flex; flex-direction:column; align-items:center; flex-shrink:0; }
+  html:not(.touch-layout) .win-layout{ flex-direction:row; align-items:center; width:100%; max-width:640px; }
+  html:not(.touch-layout) .win-col{ flex:1 1 0; min-width:0; justify-content:center; }
+  html:not(.touch-layout) .win-main{ flex-grow:1.25; padding-right:26px; }
+  html:not(.touch-layout) .win-main .promo-note{ margin-bottom:0; }
+  html:not(.touch-layout) .win-app{ align-self:stretch; padding-left:26px; border-left:1px solid rgba(100,51,149,0.18); }
+  html:not(.touch-layout) #app-qr{
+    width:116px; height:116px; margin-top:6px; padding:6px;
+    background:var(--paper); border:3px solid var(--brand); border-radius:14px;
   }
   /* The HUD is DOM rather than something drawn into the Phaser canvas: the canvas renders at a
      fixed 720px-wide framebuffer and CSS stretches it to fill the card (1.67x at a 1200px card,
@@ -272,6 +287,8 @@ if(window.matchMedia('(pointer: coarse)').matches){
   #hint{ position:absolute; bottom:8px; left:0; right:0; text-align:center; color:rgba(122,106,153,0.6); font-size:10.5px; letter-spacing:0.03em; z-index:5; pointer-events:none; }
   #watermark{ position:absolute; bottom:10px; right:14px; z-index:6; opacity:0.55; pointer-events:none; }
   #watermark img{ height:13px; width:auto; display:block; }
+  html:not(.touch-layout) #watermark{ bottom:14px; right:20px; }
+  html:not(.touch-layout) #watermark img{ height:26px; }
 
   /* The game stays a fixed 16:9 landscape card at all times — below 720px wide, its width always
      equals the viewport width, so its height is exactly width*9/16 (e.g. ~202px at 360px wide).
@@ -307,6 +324,9 @@ if(window.matchMedia('(pointer: coarse)').matches){
     .howto-key{ width:18px; height:18px; font-size:10px; border-radius:5px; }
     .loading-track{ width:150px; height:8px; margin:8px 0 5px; }
     .loading-pct{ font-size:11px; }
+    html:not(.touch-layout) .win-main{ padding-right:12px; }
+    html:not(.touch-layout) .win-app{ padding-left:12px; }
+    html:not(.touch-layout) #app-qr{ width:72px; height:72px; margin-top:2px; padding:3px; border-width:2px; border-radius:8px; }
   }
   /* The compact sizes above exist for the short 16:9 strip a narrow window still gets. A portrait
      phone no longer has that shape — its card is 720:900, roughly twice as tall — so the end
@@ -334,6 +354,9 @@ if(window.matchMedia('(pointer: coarse)').matches){
   html.touch-layout #start-overlay .brand-lockup .pipe{ height:20px; }
   html.touch-layout #start-overlay .brand-lockup .tag{ font-size:13px; }
   html.touch-layout #start-overlay h1{ font-size:30px; margin:0 0 20px; }
+  html.touch-layout #start-overlay .howto{ gap:10px; margin:0 0 24px; }
+  html.touch-layout #start-overlay .howto-row{ font-size:15px; gap:12px; }
+  html.touch-layout #start-overlay .howto-key{ width:30px; height:30px; font-size:16px; border-radius:8px; }
   html.touch-layout #start-overlay .btn{ font-size:18px; padding:14px 34px; border-radius:11px; box-shadow:0 4px 0 #4a2570; }
   /* The card itself already grows past 1200px wide (see #game-wrap above); scale the menu
      content up to match so it fills the extra room instead of sitting small in the middle
@@ -370,6 +393,10 @@ if(window.matchMedia('(pointer: coarse)').matches){
     .howto-key{ width:36px; height:36px; font-size:19px; border-radius:9px; }
     .loading-track{ width:280px; height:13px; margin:22px 0 10px; }
     .loading-pct{ font-size:18px; }
+    html:not(.touch-layout) .win-layout{ max-width:1000px; }
+    html:not(.touch-layout) .win-main{ padding-right:44px; }
+    html:not(.touch-layout) .win-app{ padding-left:44px; }
+    html:not(.touch-layout) #app-qr{ width:160px; height:160px; margin-top:8px; padding:8px; border-width:4px; border-radius:18px; }
   }
 </style>
 </head>
@@ -401,24 +428,30 @@ if(window.matchMedia('(pointer: coarse)').matches){
     </div>
   </div>
   <div id="win-overlay" class="overlay hidden">
-    <h1>VALIO, PRISTATEI <span class="accent">SAUGIAI!</span></h1>
-    <div class="win-prize">Laimėjai <strong>NEMOKAMĄ</strong> siuntimą</div>
-    <div class="promo-code">
-      <div class="promo-code-label">
-        <span class="label-idle">Kodas:</span>
-        <span class="label-copied">Nukopijuota!</span>
+    <div class="win-layout">
+      <div class="win-col win-main">
+        <h1>VALIO, PRISTATEI <span class="accent">SAUGIAI!</span></h1>
+        <div class="win-prize">Laimėjai <strong>NEMOKAMĄ</strong> siuntimą</div>
+        <div class="promo-code">
+          <div class="promo-code-label">
+            <span class="label-idle">Kodas:</span>
+            <span class="label-copied">Nukopijuota!</span>
+          </div>
+          <div class="promo-code-value" id="discount-code">APP100</div>
+        </div>
+        <div class="promo-note">Kodas galioja pirmam siuntimui tarp paštomatų Venipak programėlėje iki&nbsp;2026.11.15.</div>
       </div>
-      <div class="promo-code-value" id="discount-code">APP100</div>
-    </div>
-    <div class="promo-note">Kodas galioja pirmam siuntimui tarp paštomatų Venipak programėlėje.</div>
-    <div class="app-promo">
-      <div class="app-promo-text">Atsisiųsk programėlę</div>
-      <div class="app-badges">
-        <a id="app-store-link" target="_blank" rel="noopener noreferrer"><img src="assets/images/logos/app-store.svg" alt="Download on the App Store"></a>
-        <a id="google-play-link" target="_blank" rel="noopener noreferrer"><img src="assets/images/logos/google-play.svg" alt="Get it on Google Play"></a>
+      <div class="win-col win-app">
+        <div class="app-promo">
+          <div class="app-promo-text">Atsisiųsk programėlę</div>
+          <div class="app-badges">
+            <a id="app-store-link" target="_blank" rel="noopener noreferrer"><img src="assets/images/logos/app-store.svg" alt="Download on the App Store"></a>
+            <a id="google-play-link" target="_blank" rel="noopener noreferrer"><img src="assets/images/logos/google-play.svg" alt="Get it on Google Play"></a>
+          </div>
+          <a class="btn" id="download-btn" target="_blank" rel="noopener noreferrer">ATSISIŲSTI</a>
+          <img id="app-qr" src="assets/images/app-qr-code.png" alt="QR kodas Venipak programėlei atsisiųsti">
+        </div>
       </div>
-      <a class="btn" id="download-btn" target="_blank" rel="noopener noreferrer">ATSISIŲSTI</a>
-      <img id="app-qr" src="assets/images/app-qr-code.png" alt="QR kodas Venipak programėlei atsisiųsti">
     </div>
   </div>
   <div id="confetti"></div>
@@ -1237,6 +1270,8 @@ function showLoadingOverlay(){
   resetWinOverlay();
   setLoadingProgress(0);
   document.getElementById('loading-overlay').classList.remove('hidden');
+  // the jump/duck row stays hidden on the start screen and fades in while the assets load
+  document.getElementById('mobile-controls').classList.add('shown');
 }
 function setLoadingProgress(frac){
   const pct = Math.round(frac*100);
@@ -1263,6 +1298,7 @@ function goHome(){
   resetWinOverlay();
   document.getElementById('loading-overlay').classList.add('hidden');
   document.getElementById('start-overlay').classList.remove('hidden');
+  document.getElementById('mobile-controls').classList.remove('shown');
   if(game){ game.destroy(true); game = null; }
 }
 
