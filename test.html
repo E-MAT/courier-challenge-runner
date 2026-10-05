@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Kurjerio iššūkis - Venipak</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
+<script>
+// Decide the layout once, here, before anything paints. Phaser's canvas size is fixed when the
+// game boots, so the CSS that shapes the card must not be free to re-decide later: a media query
+// would flip the card to a different aspect ratio on rotation, on a hybrid device, or whenever the
+// primary pointer changes, leaving the box mismatched against the canvas — which renders as a
+// stretched picture. Everything layout-critical keys off this class instead, and the script below
+// reads the same class back, so the two can never disagree.
+if(window.matchMedia('(pointer: coarse)').matches){
+  document.documentElement.classList.add('touch-layout');
+}
+</script>
+<style>
+  :root{
+    --brand:#9339f2;
+    --brand-deep:#643395;
+    --brand-pale:#ebe4fe;
+    --accent-lime:#e7f43b;
+    --ink:#2a1a40;
+    --muted:#7d6a9c;
+    --paper:#ffffff;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;height:100%;
+    background:var(--ink);
+    font-family:'Inter',sans-serif;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    overflow:hidden;
+  }
+  #game-wrap{
+    position:relative;
+    /* The third term is what keeps the card from ever being taller than the viewport. Capping the
+       height instead (max-height) would clamp the box while the width stayed put, so the box ratio
+       would stop matching the canvas — and since the rule below forces the canvas to fill the box,
+       that shows up as a stretched or squashed picture. Capping the *width* by what still fits
+       vertically keeps the aspect ratio exact at every viewport shape. */
+    width:min(100vw, 720px, 100vh * 16 / 9);
+    aspect-ratio: 16/9;
+    box-shadow:0 24px 70px rgba(0,0,0,0.65), 0 0 0 1px rgba(147,57,242,0.15);
+    border-radius:16px;
+    overflow:hidden;
+    /* Ducking means press-and-hold, which a browser otherwise reads as "select this" or
+       "long-press for a menu" — both of which interrupt the hold. */
+    -webkit-touch-callout:none;
+    -webkit-user-select:none; user-select:none;
+  }
+  /* Below 1200px this stays capped at 720px as before. From 1200px up, let the card grow with
+     the viewport (up to a 1200px ceiling so it doesn't get absurd on ultrawide monitors) instead
+     of staying pinned to the same fixed size regardless of how much room is available. */
+  @media (min-width: 1200px){
+    #game-wrap{
+      width:min(75vw, 1200px, 100vh * 16 / 9);
+    }
+  }
+  #game-wrap canvas{ display:block; width:100% !important; height:100% !important; }
+  /* On a touch device held in portrait, the 16:9 card ends up a small landscape strip with a lot
+     of dead space around it. Growing the card's height (width is untouched, so every gameplay
+     constant that depends on it — obstacle spawn margin, speed, spacing — stays exactly as tuned;
+     only the vertical framing changes, adding sky/headroom above the same gameplay) plus adding a
+     dedicated jump/duck button row *below* the card (not overlaid on top of it, so it never
+     covers gameplay or the win/game-over cards) brings the whole stack closer to a phone-like
+     shape than the fixed 16:9. Kept short of a full 9:16 stretch on purpose — the character, HUD
+     and obstacles are all fixed-pixel sized, so a much taller canvas makes them read as too small.
+     900/720 is a middle ground between the original 16:9 and the 1:1 tried earlier — see the
+     matching JS config.height. */
+  /* The row starts invisible but still holding its space — the card's width formula already
+     budgets for it, so nothing shifts when it fades in on Start (see showLoadingOverlay()). */
+  #mobile-controls{
+    display:none;
+    margin-top:16px;
+    gap:16px;
+    visibility:hidden; opacity:0;
+    transition:opacity 0.6s ease, visibility 0s linear 0.6s;
+  }
+  #mobile-controls.shown{ visibility:visible; opacity:1; transition:opacity 0.6s ease; }
+  html.touch-layout #game-wrap{
+    aspect-ratio: 720/900;
+    /* same reasoning as above; the 90px is the jump/duck row that sits below the card */
+    width:min(100vw, 720px, (100vh - 90px) * 720 / 900);
+  }
+  html.touch-layout #mobile-controls{ display:flex; }
+  .pad-btn{
+    width:60px; height:60px; border-radius:50%;
+    background:rgba(243,233,214,0.1);
+    border:1.5px solid rgba(243,233,214,0.25);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; padding:0;
+    touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+    -webkit-user-select:none; user-select:none;
+    /* the duck button is held down, so suppress the long-press callout and image drag too */
+    -webkit-touch-callout:none;
+  }
+  .pad-btn svg{ width:26px; height:26px; pointer-events:none; -webkit-user-drag:none; }
+  .pad-btn:active{ background:rgba(147,57,242,0.4); }
+  .loading-track{ width:200px; max-width:70%; height:10px; background:var(--paper); border-radius:6px; overflow:hidden; margin:16px 0 8px; flex-shrink:0; }
+  .loading-fill{ height:100%; width:0%; background:linear-gradient(180deg, var(--brand), var(--brand-deep)); border-radius:6px; }
+  .loading-pct{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:14px; color:var(--brand-deep); flex-shrink:0; }
+  #start-overlay .brand-lockup{ margin-bottom:20px; }
+  #start-overlay .brand-lockup img{ height:24px; }
+  #start-overlay .brand-lockup .pipe{ height:18px; }
+  #start-overlay .brand-lockup .tag{ font-size:13px; }
+  #start-overlay h1{ font-size:32px; margin:0 0 22px; }
+  #start-overlay .btn{ font-size:17px; padding:15px 38px; border-radius:12px; }
+  .display{font-family:'Space Grotesk',sans-serif;}
+  .overlay{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center;
+    background:
+      radial-gradient(120% 100% at 50% 0%, rgba(255,255,255,0.7), transparent 60%),
+      var(--brand-pale);
+    color:var(--ink);
+    padding:18px 24px;
+    z-index:10;
+    overflow-y:auto;
+  }
+  .overlay.hidden{display:none;}
+  .brand-lockup{ display:flex; align-items:center; gap:10px; margin-bottom:10px; opacity:0.95; flex-shrink:0; }
+  .brand-lockup img{ height:18px; width:auto; display:block; }
+  .brand-lockup .pipe{ width:1px; height:14px; background:rgba(100,51,149,0.25); }
+  .brand-lockup .tag{ font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); }
+  .overlay h1{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;
+    font-size:26px; letter-spacing:-0.01em; margin:0 0 5px;
+    color:var(--ink);
+  }
+  .overlay h1 .accent{
+    background:var(--accent-lime); color:var(--ink);
+    padding:0 6px; border-radius:5px;
+  }
+  .overlay p{margin:2px 0 10px; font-size:13px; line-height:1.45; color:var(--muted); max-width:360px;}
+  /* Control hints. The arrows read as the arrow keys on desktop and as the matching on-screen
+     jump/duck buttons on a phone, so both get the same two rows. */
+  .howto{ display:flex; flex-direction:column; align-items:flex-start; gap:8px; margin:0 0 18px; flex-shrink:0; }
+  .howto-row{ display:flex; align-items:center; gap:10px; font-size:13px; line-height:1.3; color:var(--ink); }
+  .howto-key{
+    flex-shrink:0; width:26px; height:26px; border-radius:7px;
+    background:var(--paper); color:var(--brand-deep);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:14px;
+  }
+  .btn{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;
+    font-size:15px; letter-spacing:0.01em;
+    background:linear-gradient(180deg, var(--brand), var(--brand-deep));
+    color:#fff;
+    border:none;
+    padding:11px 28px;
+    border-radius:10px;
+    cursor:pointer;
+    box-shadow:0 4px 0 #4a2570, 0 8px 24px rgba(147,57,242,0.25);
+    transition:transform 0.08s ease;
+    touch-action:manipulation;
+    -webkit-tap-highlight-color:transparent;
+    -webkit-user-select:none;
+    user-select:none;
+  }
+  .btn:active{transform:translateY(3px); box-shadow:0 1px 0 #4a2570, 0 4px 12px rgba(147,57,242,0.2);}
+  .btn-stack{ display:flex; flex-direction:column; align-items:center; gap:8px; margin-top:6px; flex-shrink:0; }
+  .stat-row{display:flex; gap:26px; margin-bottom:8px; flex-shrink:0;}
+  .stat{text-align:center;}
+  .stat .num{font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:26px; color:var(--ink);}
+  .stat .lbl{font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted);}
+  .win-prize{ font-size:14px; font-weight:500; color:var(--ink); margin-bottom:10px; flex-shrink:0; }
+  .win-prize strong{ font-weight:800; }
+  .promo-code{
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    border:1.5px dashed var(--brand); border-radius:12px;
+    background:var(--paper); padding:8px 22px; margin-bottom:10px; flex-shrink:0;
+    cursor:pointer; user-select:none; -webkit-user-select:none;
+    -webkit-tap-highlight-color:transparent; transition:transform 0.12s ease;
+  }
+  .promo-code:active{ transform:scale(0.96); }
+  /* Copy confirmation: the dashes go solid and the label switches. Both labels share one grid
+     cell, so the box always keeps the width of the wider one and nothing shifts on the swap. */
+  .promo-code.copied{ border-style:solid; }
+  .promo-code.copied .promo-code-label{ color:var(--brand); }
+  .promo-note{ font-size:10.5px; line-height:1.35; color:var(--muted); max-width:370px; margin-bottom:16px; flex-shrink:0; text-wrap:balance; }
+  .promo-code-label{ font-size:10px; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); display:grid; }
+  .promo-code-label > span{ grid-area:1 / 1; }
+  .promo-code-label .label-copied,
+  .promo-code.copied .promo-code-label .label-idle{ visibility:hidden; }
+  .promo-code.copied .promo-code-label .label-copied{ visibility:visible; }
+  .promo-code-value{
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:24px;
+    letter-spacing:0.06em; color:var(--brand-deep);
+  }
+  .app-promo{ display:flex; flex-direction:column; align-items:center; gap:8px; margin:2px 0 0; flex-shrink:0; }
+  .app-promo-text{ font-size:12.5px; color:var(--ink); font-weight:600; max-width:300px; }
+  .app-badges{ display:flex; align-items:center; justify-content:center; gap:10px; }
+  .app-badges a{ display:block; -webkit-tap-highlight-color:transparent; }
+  /* needed because the display:block above would otherwise beat the browser's own [hidden] rule */
+  .app-badges a[hidden]{ display:none; }
+  /* a badge whose store URL hasn't been filled in yet shouldn't pretend to be clickable */
+  .app-badges a:not([href]){ cursor:default; }
+  .app-badges img{ height:36px; width:auto; display:block; }
+  /* Store badges are for the device that can actually install from them; a desktop visitor gets
+     a Download link to the app page plus a QR code to carry it across to their phone. */
+  #download-btn{ display:none; text-decoration:none; margin-top:2px; }
+  #app-qr{ display:none; width:84px; height:84px; border-radius:6px; }
+  @media (pointer: fine){
+    .app-badges{ display:none; }
+    #download-btn{ display:inline-block; }
+    #app-qr{ display:block; }
+  }
+  /* Win screen: a single centred column on a phone. On desktop the two halves sit side by side —
+     the reward and code on the left, the app on the right, split by a thin rule. */
+  .win-layout, .win-col{ display:flex; flex-direction:column; align-items:center; flex-shrink:0; }
+  html:not(.touch-layout) .win-layout{ flex-direction:row; align-items:center; width:100%; max-width:640px; }
+  html:not(.touch-layout) .win-col{ flex:1 1 0; min-width:0; justify-content:center; }
+  html:not(.touch-layout) .win-main{ flex-grow:1.25; padding-right:26px; }
+  html:not(.touch-layout) .win-main .promo-note{ margin-bottom:0; }
+  html:not(.touch-layout) .win-app{ align-self:stretch; padding-left:26px; border-left:1px solid rgba(100,51,149,0.18); }
+  html:not(.touch-layout) #app-qr{
+    width:116px; height:116px; margin-top:6px; padding:6px;
+    background:var(--paper); border:3px solid var(--brand); border-radius:14px;
+  }
+  /* The HUD is DOM rather than something drawn into the Phaser canvas: the canvas renders at a
+     fixed 720px-wide framebuffer and CSS stretches it to fill the card (1.67x at a 1200px card,
+     more again on a 2x display), which visibly softened the text and bar. As real elements these
+     stay crisp at any size. Everything below is expressed in em so the whole HUD scales with the
+     card, the way the canvas-drawn version used to — 1em here is the old design's 10px, so the
+     font-size rules mirror #game-wrap's own width rules. */
+  #hud{
+    position:absolute; top:1.6em; left:1.6em;
+    z-index:6; pointer-events:none;
+    font-size:calc(min(100vw, 720px) / 72);
+    display:flex; align-items:center; gap:0.5em;
+  }
+  .heart{ width:2.6em; height:auto; display:block; }
+  @media (min-width: 1200px){
+    #hud{ font-size:calc(min(75vw, 1200px) / 72); }
+  }
+  /* matches the old PORTRAIT_HUD_SCALE: the row reads small against the taller portrait canvas */
+  html.touch-layout #hud{ font-size:calc(min(100vw, 720px) / 72 * 1.35); gap:0.75em; }
+  /* A phone's card is half the width of the desktop one, so the same em size lands much smaller
+     in real pixels there — this brings the hearts back up by half again. */
+  html.touch-layout .heart{ width:3.9em; }
+  /* Confetti is DOM rather than Phaser particles for one reason: the win overlay is opaque and
+     sits above the canvas, so canvas confetti vanishes the moment the success screen appears.
+     At z-index 15 this layer sits above the overlay (10) and below the controls (20), so the
+     celebration keeps falling over the success card. */
+  /* Portrait-only on touch. No browser lets a page actually pin the device's orientation —
+     screen.orientation.lock() needs a fullscreen context and iOS Safari doesn't implement it —
+     so this asks for it instead, and applyOrientationGate() pauses the run behind it.
+     Gated on the layout class plus live orientation rather than on (pointer: coarse): the pointer
+     type can flip spuriously mid-session, while the class is fixed at load and orientation is a
+     genuine live signal. */
+  #rotate-overlay{
+    display:none;
+    position:fixed; inset:0; z-index:100;
+    background:var(--ink); color:var(--brand-pale);
+    flex-direction:column; align-items:center; justify-content:center; gap:18px;
+    text-align:center; padding:24px;
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:18px;
+  }
+  #rotate-overlay svg{ width:54px; height:54px; }
+  @media (orientation: landscape){
+    html.touch-layout #rotate-overlay{ display:flex; }
+  }
+  #confetti{ position:absolute; inset:0; z-index:15; pointer-events:none; overflow:hidden; display:none; }
+  #confetti.active{ display:block; }
+  .confetti-piece{
+    position:absolute; top:0;
+    animation-name:confetti-fall; animation-timing-function:linear; animation-iteration-count:infinite;
+    /* backwards: hold the first keyframe (above the top edge) during the start delay, otherwise a
+       staggered piece would sit parked at the top of the card until its turn came round */
+    animation-fill-mode:backwards;
+  }
+  @keyframes confetti-fall{
+    from{ transform:translate3d(0, -40px, 0) rotate(0deg); }
+    to  { transform:translate3d(var(--drift,0px), var(--fall,600px), 0) rotate(var(--spin,720deg)); }
+  }
+  /* The success screen fades up over the scene instead of cutting to it — see showWinOverlay(). */
+  #win-overlay{ opacity:1; }
+  #hint{ position:absolute; bottom:8px; left:0; right:0; text-align:center; color:rgba(122,106,153,0.6); font-size:10.5px; letter-spacing:0.03em; z-index:5; pointer-events:none; }
+  #watermark{ position:absolute; bottom:10px; right:14px; z-index:6; opacity:0.55; pointer-events:none; }
+  #watermark img{ height:13px; width:auto; display:block; }
+  html:not(.touch-layout) #watermark{ bottom:14px; right:20px; }
+  html:not(.touch-layout) #watermark img{ height:26px; }
+
+  /* The game stays a fixed 16:9 landscape card at all times — below 720px wide, its width always
+     equals the viewport width, so its height is exactly width*9/16 (e.g. ~202px at 360px wide).
+     Below that, menu content has to shrink to actually fit instead of just scrolling internally. */
+  @media (max-width: 480px){
+    .overlay{ padding:6px 14px; }
+    .brand-lockup{ margin-bottom:3px; }
+    .brand-lockup img{ height:13px; }
+    .brand-lockup .pipe{ height:10px; }
+    .brand-lockup .tag{ font-size:8px; }
+    .overlay h1{ font-size:15px; margin:0 0 2px; }
+    .overlay p{ display:none; }
+    .stat-row{ gap:14px; margin-bottom:2px; }
+    .stat .num{ font-size:15px; }
+    .stat .lbl{ font-size:7px; }
+    .app-promo{ gap:4px; margin:0; }
+    .win-prize{ font-size:9px; margin-bottom:5px; }
+    .promo-code{ padding:4px 14px; gap:1px; border-radius:8px; margin-bottom:5px; }
+    .promo-code-label{ font-size:7px; }
+    .promo-code-value{ font-size:15px; }
+    .promo-note{ font-size:7px; max-width:230px; margin-bottom:8px; }
+    .app-promo-text{ font-size:8.5px; max-width:220px; }
+    .app-badges{ gap:6px; }
+    .app-badges img{ height:24px; }
+    .btn{ font-size:11px; padding:5px 16px; border-radius:7px; box-shadow:0 2px 0 #4a2570; }
+    .btn-stack{ gap:3px; margin-top:2px; }
+    #start-overlay .brand-lockup{ margin-bottom:8px; }
+    #start-overlay .brand-lockup img{ height:16px; }
+    #start-overlay h1{ font-size:20px; margin:0 0 10px; }
+    #start-overlay .btn{ font-size:13px; padding:9px 22px; }
+    .howto{ gap:4px; margin:0 0 10px; }
+    .howto-row{ font-size:10px; gap:6px; }
+    .howto-key{ width:18px; height:18px; font-size:10px; border-radius:5px; }
+    .loading-track{ width:150px; height:8px; margin:8px 0 5px; }
+    .loading-pct{ font-size:11px; }
+    html:not(.touch-layout) .win-main{ padding-right:12px; }
+    html:not(.touch-layout) .win-app{ padding-left:12px; }
+    html:not(.touch-layout) #app-qr{ width:72px; height:72px; margin-top:2px; padding:3px; border-width:2px; border-radius:8px; }
+  }
+  /* The compact sizes above exist for the short 16:9 strip a narrow window still gets. A portrait
+     phone no longer has that shape — its card is 720:900, roughly twice as tall — so the end
+     screens there were left tiny with most of the card empty. Scale them back up for that case
+     only; this block sits after the one above so it wins, and is scoped to the two end screens so
+     the start and loading screens keep their own tuning. */
+  html.touch-layout #win-overlay, html.touch-layout #gameover-overlay{ padding:12px 18px; }
+  html.touch-layout #win-overlay h1, html.touch-layout #gameover-overlay h1{ font-size:26px; margin:0 0 10px; }
+  html.touch-layout #win-overlay .stat-row, html.touch-layout #gameover-overlay .stat-row{ gap:22px; margin-bottom:10px; }
+  html.touch-layout #win-overlay .stat .num, html.touch-layout #gameover-overlay .stat .num{ font-size:26px; }
+  html.touch-layout #win-overlay .stat .lbl, html.touch-layout #gameover-overlay .stat .lbl{ font-size:11px; }
+  html.touch-layout #win-overlay .btn, html.touch-layout #gameover-overlay .btn{ font-size:16px; padding:11px 28px; border-radius:10px; box-shadow:0 4px 0 #4a2570; }
+  html.touch-layout #win-overlay .btn-stack, html.touch-layout #gameover-overlay .btn-stack{ gap:9px; margin-top:7px; }
+  html.touch-layout #win-overlay .app-promo{ gap:8px; margin:0; }
+  html.touch-layout #win-overlay .win-prize{ font-size:15px; margin-bottom:10px; }
+  html.touch-layout #win-overlay .promo-code{ padding:9px 24px; gap:3px; border-radius:12px; margin-bottom:10px; }
+  html.touch-layout #win-overlay .promo-code-label{ font-size:11px; }
+  html.touch-layout #win-overlay .promo-code-value{ font-size:26px; }
+  html.touch-layout #win-overlay .promo-note{ font-size:11px; max-width:280px; margin-bottom:18px; }
+  html.touch-layout #win-overlay .app-promo-text{ font-size:14px; max-width:290px; }
+  html.touch-layout #win-overlay .app-badges{ gap:10px; }
+  html.touch-layout #win-overlay .app-badges img{ height:38px; }
+  html.touch-layout #start-overlay .brand-lockup{ margin-bottom:18px; }
+  html.touch-layout #start-overlay .brand-lockup img{ height:26px; }
+  html.touch-layout #start-overlay .brand-lockup .pipe{ height:20px; }
+  html.touch-layout #start-overlay .brand-lockup .tag{ font-size:13px; }
+  html.touch-layout #start-overlay h1{ font-size:30px; margin:0 0 20px; }
+  html.touch-layout #start-overlay .howto{ gap:10px; margin:0 0 24px; }
+  html.touch-layout #start-overlay .howto-row{ font-size:15px; gap:12px; }
+  html.touch-layout #start-overlay .howto-key{ width:30px; height:30px; font-size:16px; border-radius:8px; }
+  html.touch-layout #start-overlay .btn{ font-size:18px; padding:14px 34px; border-radius:11px; box-shadow:0 4px 0 #4a2570; }
+  /* The card itself already grows past 1200px wide (see #game-wrap above); scale the menu
+     content up to match so it fills the extra room instead of sitting small in the middle
+     of a much bigger card. */
+  @media (min-width: 1200px){
+    .overlay{ padding:26px 34px; }
+    .brand-lockup{ margin-bottom:14px; gap:14px; }
+    .brand-lockup img{ height:25px; }
+    .brand-lockup .pipe{ height:20px; }
+    .brand-lockup .tag{ font-size:14px; }
+    .overlay h1{ font-size:38px; margin:0 0 8px; }
+    .overlay p{ font-size:17px; max-width:480px; margin:2px 0 14px; }
+    .stat-row{ gap:34px; margin-bottom:11px; }
+    .stat .num{ font-size:34px; }
+    .stat .lbl{ font-size:13px; }
+    .app-promo{ gap:14px; margin:6px 0 0; }
+    .win-prize{ font-size:20px; margin-bottom:14px; }
+    .promo-code{ padding:13px 34px; gap:5px; border-radius:16px; margin-bottom:14px; }
+    .promo-code-label{ font-size:14px; }
+    .promo-code-value{ font-size:34px; }
+    .promo-note{ font-size:14px; max-width:490px; margin-bottom:24px; }
+    #app-qr{ width:120px; height:120px; }
+    .app-promo-text{ font-size:18px; max-width:440px; }
+    .app-badges{ gap:16px; }
+    .app-badges img{ height:54px; }
+    .btn{ font-size:19px; padding:15px 38px; border-radius:13px; }
+    .btn-stack{ gap:11px; margin-top:9px; }
+    #start-overlay .brand-lockup{ margin-bottom:26px; }
+    #start-overlay .brand-lockup img{ height:32px; }
+    #start-overlay h1{ font-size:46px; margin:0 0 26px; }
+    #start-overlay .btn{ font-size:22px; padding:19px 46px; }
+    .howto{ gap:12px; margin:0 0 26px; }
+    .howto-row{ font-size:18px; gap:14px; }
+    .howto-key{ width:36px; height:36px; font-size:19px; border-radius:9px; }
+    .loading-track{ width:280px; height:13px; margin:22px 0 10px; }
+    .loading-pct{ font-size:18px; }
+    html:not(.touch-layout) .win-layout{ max-width:1000px; }
+    html:not(.touch-layout) .win-main{ padding-right:44px; }
+    html:not(.touch-layout) .win-app{ padding-left:44px; }
+    html:not(.touch-layout) #app-qr{ width:160px; height:160px; margin-top:8px; padding:8px; border-width:4px; border-radius:18px; }
+  }
+</style>
+</head>
+<body>
+<div id="game-wrap">
+  <div id="phaser-container"></div>
+  <div id="start-overlay" class="overlay">
+    <div class="brand-lockup">
+      <img src="assets/images/logos/venipak-logo-purple.svg" alt="Venipak">
+      <div class="pipe"></div>
+      <div class="tag">Kurjerio iššūkis</div>
+    </div>
+    <h1>Pristatyk siuntą <span class="accent">saugiai!</span></h1>
+    <div class="howto">
+      <div class="howto-row"><span class="howto-key">&uarr;</span><span>Peršokti kliūtis</span></div>
+      <div class="howto-row"><span class="howto-key">&darr;</span><span>Pasilenkti žemyn</span></div>
+    </div>
+    <button class="btn" id="start-btn">PRADĖTI</button>
+  </div>
+  <div id="loading-overlay" class="overlay hidden">
+    <h1 style="font-size:20px;">Kraunama&hellip;</h1>
+    <div class="loading-track"><div class="loading-fill" id="loading-fill"></div></div>
+    <div class="loading-pct" id="loading-pct">0%</div>
+  </div>
+  <div id="gameover-overlay" class="overlay hidden">
+    <h1 style="color:#c94f4f">Ups, nepavyko&hellip;</h1>
+    <div class="btn-stack">
+      <button class="btn" id="retry-btn">BANDYK DAR KARTĄ</button>
+    </div>
+  </div>
+  <div id="win-overlay" class="overlay hidden">
+    <div class="win-layout">
+      <div class="win-col win-main">
+        <h1>VALIO, PRISTATEI <span class="accent">SAUGIAI!</span></h1>
+        <div class="win-prize">Laimėjai <strong>NEMOKAMĄ</strong> siuntimą</div>
+        <div class="promo-code">
+          <div class="promo-code-label">
+            <span class="label-idle">Kodas:</span>
+            <span class="label-copied">Nukopijuota!</span>
+          </div>
+          <div class="promo-code-value" id="discount-code">APP100</div>
+        </div>
+        <div class="promo-note">Kodas galioja pirmam siuntimui tarp paštomatų Venipak programėlėje iki&nbsp;2026.11.15.</div>
+      </div>
+      <div class="win-col win-app">
+        <div class="app-promo">
+          <div class="app-promo-text">Atsisiųsk programėlę</div>
+          <div class="app-badges">
+            <a id="app-store-link" target="_blank" rel="noopener noreferrer"><img src="assets/images/logos/app-store.svg" alt="Download on the App Store"></a>
+            <a id="google-play-link" target="_blank" rel="noopener noreferrer"><img src="assets/images/logos/google-play.svg" alt="Get it on Google Play"></a>
+          </div>
+          <a class="btn" id="download-btn" target="_blank" rel="noopener noreferrer">ATSISIŲSTI</a>
+          <img id="app-qr" src="assets/images/app-qr-code.png" alt="QR kodas Venipak programėlei atsisiųsti">
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="confetti"></div>
+  <div id="hud">
+    <img class="heart" src="assets/images/icons/heart.png" alt="">
+    <img class="heart" src="assets/images/icons/heart.png" alt="">
+    <img class="heart" src="assets/images/icons/heart.png" alt="">
+  </div>
+  <div id="hint"></div>
+  <div id="watermark">
+    <img src="assets/images/logos/venipak-logo-white.svg" alt="Venipak">
+  </div>
+</div>
+<div id="rotate-overlay">
+  <svg viewBox="0 0 48 48" fill="none">
+    <path d="M10 24A14 14 0 1 1 24 38" stroke="#ebe4fe" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M24 31.5 24 44.5 16.5 38z" fill="#ebe4fe"/>
+  </svg>
+  <div>Pasuk telefoną vertikaliai</div>
+</div>
+<div id="mobile-controls">
+  <button class="pad-btn" id="duck-btn" aria-label="Duck">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M12 19l-6-6M12 19l6-6" stroke="#f3e9d6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button class="pad-btn" id="jump-btn" aria-label="Jump">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M12 19V5M12 5l-6 6M12 5l6 6" stroke="#f3e9d6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+</div>
+<script>
+// --- Edit me: the win screen's reward and app promo. ---
+// Leave a URL empty and that badge simply renders as a non-clickable image. Which badge and
+// which line of copy appear depends on the device — see detectMobileOS() further down.
+// DOWNLOAD_URL is the desktop equivalent: one button in place of the two store badges.
+const DISCOUNT_CODE = 'APP100';
+const APP_STORE_URL = 'https://apps.apple.com/lt/app/venipak-delivery-platform/id6467194583';
+const GOOGLE_PLAY_URL = 'https://play.google.com/store/apps/details?id=com.venipak.delivery';
+const DOWNLOAD_URL = 'https://venipak.com/lt/app/download/';
+const APP_PROMO_TEXT = {
+  ios: 'Atsisiųsk programėlę',
+  android: 'Atsisiųsk programėlę',
+  other: 'Atsisiųsk programėlę'
+};
+
+const LEVEL_DISTANCE = 3000;
+// Longest step one frame may advance the game by (50ms = a 20fps floor). At the run speed of
+// 340px/s that's 17px per frame — well under any obstacle's width, so none can be skipped.
+const MAX_FRAME_MS = 50;
+// Pace of the whole arrival: the machine's slide-in, the world scroll behind it, and the
+// courier's walk all run at this speed. The walk cycle's frame rate was authored against
+// WALK_CYCLE_TUNED_SPEED, so setCourierAnim() scales the animation by the ratio between the two —
+// otherwise raising this makes the courier's feet skate along the ground.
+const ARRIVAL_SPEED = 220;
+const WALK_CYCLE_TUNED_SPEED = 150;
+// How far past the machine's near edge the courier plants himself (he ends up standing in front
+// of the open door, overlapping the machine), and how the last stretch is eased: speed tapers
+// over ARRIVAL_EASE_DISTANCE px down to ARRIVAL_EASE_MIN of full pace, so he slows to a halt
+// rather than marching into a dead stop. The floor matters — a taper all the way to zero would
+// approach the mark without ever reaching it. The overlap is scaled like the rest of the scene's
+// fixed sizes so it stays proportional on portrait's larger art.
+const ARRIVAL_STOP_OVERLAP = 35;
+const ARRIVAL_EASE_DISTANCE = 50;
+const ARRIVAL_EASE_MIN = 0.3;
+// Arrival beats: the courier stops in front of the machine, holds for PARCEL_OPEN_DELAY, then the
+// machine opens and the confetti starts together; WIN_SCREEN_DELAY later the win screen begins
+// fading in over WIN_FADE_MS. The scene stays visible through the fade, so the door animation
+// (30 frames at ~24fps, ~1.3s) and the courier's lift still read before it is fully covered.
+const PARCEL_OPEN_DELAY = 500;
+const WIN_SCREEN_DELAY = 500;
+const WIN_FADE_MS = 1200;
+// Spawning stops this far out so the road is clear by the time the courier walks it. Obstacles
+// keep scrolling through the machine's slide-in (see update()), which buys some of that clearing
+// time back, so the gap doesn't have to cover the whole journey off-screen on its own — it only
+// has to get the last one behind the courier's starting mark before the camera stops.
+const LAST_OBSTACLE_DISTANCE = LEVEL_DISTANCE - 370;
+// Hearts shown in the HUD, and the hits the player can absorb. Each hit empties the rightmost
+// remaining heart; the hit after the last one is emptied ends the run — so MAX_HEARTS + 1 hits.
+const MAX_HEARTS = 3;
+const HEART_FULL_SRC = 'assets/images/icons/heart.png';
+const HEART_EMPTY_SRC = 'assets/images/icons/heart-empty.png';
+// Measured directly from the background art (1536x1024 source): the purple brick band starts
+// at y=885 (character + ground obstacles stand on its top edge) and the light curb strip above
+// it runs from y=831 to y=884 (obstacle-post bottoms land there so they read as posts planted
+// on the curb, not floating over the brick).
+const GROUND_Y_RATIO = 885/1024;
+const POST_Y_RATIO = 831/1024;
+// Nudges everything toward the bottom of the 405px-tall canvas without spilling off it or
+// off the background's own bands: the purple ground band leaves ~55px of margin below its top
+// edge, and the grey curb band above it is only ~21px tall, so each gets pushed as far down as
+// its own band comfortably allows.
+const GROUND_Y_SHIFT = 50;
+const POST_Y_SHIFT = 20;
+const GRAVITY = 1600;
+const JUMP_VELOCITY = -620;
+
+// Matches the CSS breakpoint on #game-wrap: a touch device gets a taller logical canvas (see
+// config.height below) so the same fixed-pixel character/obstacle/HUD art reads smaller against
+// the extra headroom than it does at 16:9. PORTRAIT_OBJECT_SCALE bumps those fixed sizes back up
+// there, so they read the same size as before despite the taller canvas.
+// Read back the class the head script set, rather than re-running the media query: that is what
+// guarantees the canvas Phaser builds matches the box the CSS draws, for the life of the page.
+// The player can then rotate freely — the card just scales to fit and never distorts.
+const IS_PORTRAIT_LAYOUT = document.documentElement.classList.contains('touch-layout');
+const PORTRAIT_OBJECT_SCALE = IS_PORTRAIT_LAYOUT ? 1.2 : 1;
+const PORTRAIT_COURIER_SCALE = IS_PORTRAIT_LAYOUT ? 1.4 : 1;
+
+let gameState = { distance:0, hearts:MAX_HEARTS, speed:340, running:true, vy:0, y:0, isJumping:false, isDucking:false };
+// Survive across restarts (the Phaser game instance gets destroyed/recreated, but these
+// top-level variables don't) so back-to-back runs don't show the same skyline/ground twice in a row.
+let lastTopBgKey = null;
+let lastBottomBgKey = null;
+
+const OBSTACLE_DEFS = {
+  ground: [
+    { key:'obs_hole',    src:'assets/images/obstacles/bottom/hole.png',           targetH:32 },
+    // fixedSize: exempt from PORTRAIT_OBJECT_SCALE — these two are intentionally smaller than
+    // their peers so they're easier to clear cleanly, and scaling them up on portrait like every
+    // other obstacle would undo that (68*1.2=81.6, bigger than the original pre-reduction 76).
+    { key:'obs_manhole', src:'assets/images/obstacles/bottom/manhole.png',        targetH:68, fixedSize:true },
+    { key:'obs_leaves',  src:'assets/images/obstacles/bottom/pile-of-leaves.png', targetH:59, fixedSize:true },
+    { key:'obs_scooter', src:'assets/images/obstacles/bottom/scooter.png',        targetH:72 }
+  ],
+  air: [
+    { key:'obs_stopsign',   src:'assets/images/obstacles/top/stop-sign.png',      targetH:190 },
+    { key:'obs_roadworks',  src:'assets/images/obstacles/top/road-works-sign.png',targetH:190 }
+  ]
+};
+const FINISH_DEF = { key:'parcel_machine', src:'assets/images/parcel-machine.png', targetH:189 };
+// Where the machine comes to rest, as a fraction of the canvas width to its centre. Moving it
+// left lengthens its slide-in but shortens the courier's walk to it by the same amount, so the
+// ending's overall length barely moves.
+const FINISH_REST_X_RATIO = 0.66;
+// Plays once, in place of the static parcel-machine image, the instant the courier reaches it.
+// originX/originY pin the sprite by the machine *body* rather than by its canvas: measured from
+// the art, the body's opaque bounds sit at x 95..773 of the 776px-wide frame (centre 434, i.e.
+// 46px right of the canvas centre) with its base 2px off the 1024px bottom edge. The static
+// parcel-machine.png is centred in its own canvas, so anchoring this one at a plain 0.5 would
+// make the machine jump sideways the instant the texture swaps.
+const PARCEL_OPEN_DEF = {
+  atlasKey:'parcel_open', png:'assets/animations/parcel_machine_opening.png', json:'assets/animations/parcel_machine_opening.json',
+  prefix:'courier_challenge_runner_parcel_machine_opening_2_', suffix:'.png', start:0, end:29,
+  originX: 434/776, originY: 1022/1024
+};
+
+// The background art is split into two independently-scrolling layers for a parallax effect:
+// sky/skyline/river (distant, moves slower) and curb/brick ground (moves at full gameplay
+// speed, since the character and obstacles are anchored to it and would visibly slide across
+// it otherwise). Both crops share the same 1536px width and were cut at the exact same source
+// y=831 boundary, so a pair from the same original image lines up with zero gap when stacked.
+const BG_SOURCE_H = 1024;
+const BG_CUT_Y = 831;
+const BG_PARALLAX_FACTOR = 0.35; // top layer's scroll speed as a fraction of the ground's
+const TOP_BACKGROUND_DEFS = [
+  { key:'bgtop_0', src:'assets/images/backgrounds/top/bg-light-top.png' },
+  { key:'bgtop_1', src:'assets/images/backgrounds/top/bg-light-2-top.png' },
+  { key:'bgtop_2', src:'assets/images/backgrounds/top/bg-light-birds-top.png' },
+  { key:'bgtop_3', src:'assets/images/backgrounds/top/bg-light-bridge-top.png' },
+  { key:'bgtop_4', src:'assets/images/backgrounds/top/bg-light-plane-top.png' },
+  { key:'bgtop_5', src:'assets/images/backgrounds/top/bg-light-ship-top.png' }
+];
+const BOTTOM_BACKGROUND_DEFS = [
+  { key:'bgbottom_0', src:'assets/images/backgrounds/bottom/bg-light-bottom.png' },
+  { key:'bgbottom_1', src:'assets/images/backgrounds/bottom/bg-light-2-bottom.png' },
+  { key:'bgbottom_2', src:'assets/images/backgrounds/bottom/bg-light-birds-bottom.png' },
+  { key:'bgbottom_3', src:'assets/images/backgrounds/bottom/bg-light-bridge-bottom.png' },
+  { key:'bgbottom_4', src:'assets/images/backgrounds/bottom/bg-light-plane-bottom.png' },
+  { key:'bgbottom_5', src:'assets/images/backgrounds/bottom/bg-light-ship-bottom.png' }
+];
+
+const COURIER_ANIM_ORIGIN_Y = 0.984375;
+const COURIER_ANIMS = {
+  run: {
+    atlasKey:'courier_run', png:'assets/animations/courier_running.png', json:'assets/animations/courier_running.json',
+    prefix:'courier_running_default_', suffix:'.webp', start:0, end:31, originX:0.5028248587570622, loop:true, heightRatio:1
+  },
+  duck: {
+    // the duck art fills its own canvas just as fully as the run art does (measured: ~247px vs
+    // ~249px of character content out of the same 256px-tall canvas), so scaling both by canvas
+    // height alone keeps them the same height — it just looks wider/bulkier, not shorter/crouched.
+    // heightRatio pulls the duck pose down to a believable crouch height.
+    atlasKey:'courier_duck', png:'assets/animations/courier_ducking.png', json:'assets/animations/courier_ducking.json',
+    prefix:'courier_ducking_ducking_', suffix:'.png', start:0, end:10, originX:0.5, loop:true, heightRatio:0.75
+  },
+  walk: {
+    // measured content bbox is 115x250 out of the same 256px-tall canvas — essentially the same
+    // fill ratio as running (120x249), so it shares the run scale rather than needing its own ratio.
+    atlasKey:'courier_walk', png:'assets/animations/courier_walking.png', json:'assets/animations/courier_walking.json',
+    prefix:'courier_walking_default_', suffix:'.png', start:0, end:18, originX:0.5, loop:true, heightRatio:1
+  },
+  raise: {
+    // Lifting the box into the locker — plays once and holds on the last frame. This sheet is
+    // framed differently from the others and needs all three overrides to line up with them:
+    // the courier is drawn only 195px tall head-to-feet (vs ~249 for run/walk) in the same 256px
+    // canvas, so heightRatio scales him back to matching size; he sits well left of centre
+    // (content centre x≈42 of 225) rather than mid-canvas, so originX pins him by his body
+    // instead of by the frame; and his feet sit flush with the bottom edge rather than 3px up,
+    // hence its own originY.
+    // durationMs rather than a frame rate: at the sheet's authored 52ms a frame the lift runs
+    // 3.5s, but the win screen covers the scene 2.35s after he stops, so a third of it — the
+    // part where the box actually goes in — would never be seen. Pinning it to the arrival beats
+    // makes it finish just as the win screen is triggered, and keeps it correct if those change.
+    atlasKey:'courier_raise', png:'assets/animations/courier_raising_the_box.png', json:'assets/animations/courier_raising_the_box.json',
+    prefix:'courier_raising_the_box_raising-the-box-up_', suffix:'.png', start:0, end:66,
+    originX:42.5/225, originY:255/256, loop:false, heightRatio:249/195,
+    durationMs: PARCEL_OPEN_DELAY + WIN_SCREEN_DELAY + WIN_FADE_MS
+  }
+};
+
+class RunnerScene extends Phaser.Scene {
+  constructor(){ super('runner'); }
+
+  preload(){
+    this.load.on('progress', (value)=>setLoadingProgress(value));
+    this.load.on('complete', ()=>hideLoadingOverlay());
+    OBSTACLE_DEFS.ground.forEach(d=>this.load.image(d.key, d.src));
+    OBSTACLE_DEFS.air.forEach(d=>this.load.image(d.key, d.src));
+    this.load.image(FINISH_DEF.key, FINISH_DEF.src);
+    this.load.atlas(PARCEL_OPEN_DEF.atlasKey, PARCEL_OPEN_DEF.png, PARCEL_OPEN_DEF.json);
+    TOP_BACKGROUND_DEFS.forEach(b=>this.load.image(b.key, b.src));
+    BOTTOM_BACKGROUND_DEFS.forEach(b=>this.load.image(b.key, b.src));
+    Object.values(COURIER_ANIMS).forEach(a=>this.load.atlas(a.atlasKey, a.png, a.json));
+  }
+
+  create(){
+    const w = this.scale.width, h = this.scale.height;
+    this.groundY = h*GROUND_Y_RATIO + GROUND_Y_SHIFT;
+    this.postY = h*POST_Y_RATIO + POST_Y_SHIFT;
+    // the courier runs halfway between its pre-shift and post-shift ground line, while ground
+    // obstacles and the parcel machine keep the full shift
+    this.courierY = h*GROUND_Y_RATIO + GROUND_Y_SHIFT/2;
+    gameState = { distance:0, hearts:MAX_HEARTS, speed:340, running:true, vy:0, y:this.courierY, isJumping:false, isDucking:false };
+
+    // The parcel machine's opening animation (plays once, in place of the static image, when
+    // the courier reaches it) shares the same create-once-reuse pattern as the courier's anims.
+    if(!this.anims.exists('parcel_open')){
+      this.anims.create({
+        key: 'parcel_open',
+        frames: this.anims.generateFrameNames(PARCEL_OPEN_DEF.atlasKey, {
+          prefix: PARCEL_OPEN_DEF.prefix, start: PARCEL_OPEN_DEF.start, end: PARCEL_OPEN_DEF.end, zeroPad: 3, suffix: PARCEL_OPEN_DEF.suffix
+        }),
+        frameRate: 1000/42,
+        repeat: 0
+      });
+    }
+
+    // Background is two independently-scrolling rows of full-image panels (not a single
+    // repeating tile) so different skylines can appear within one run: each panel scrolls left
+    // and, once fully off-screen, gets recycled to the right edge with a new image that isn't
+    // the same as its new left neighbor. The sky/skyline/river layer and the curb/brick ground
+    // layer are cropped from the same source at the same y, so they always stack with no gap.
+    this.bgScale = h / BG_SOURCE_H;
+    this.bgPanelW = TOP_BACKGROUND_DEFS.length ? this.textures.get(TOP_BACKGROUND_DEFS[0].key).getSourceImage().width * this.bgScale : 0;
+    const topDispH = BG_CUT_Y * this.bgScale;
+    const bottomDispH = h - topDispH;
+    const panelCount = Math.ceil(w / this.bgPanelW) + 1;
+    this.bgTopPanels = this.createBgPanelSet(TOP_BACKGROUND_DEFS, 0, topDispH, panelCount,
+      ()=>lastTopBgKey, k=>lastTopBgKey=k);
+    this.bgBottomPanels = this.createBgPanelSet(BOTTOM_BACKGROUND_DEFS, topDispH, bottomDispH, panelCount,
+      ()=>lastBottomBgKey, k=>lastBottomBgKey=k);
+
+    this.rain = [];
+    for(let i=0;i<70;i++){
+      this.rain.push({
+        x: Phaser.Math.Between(0,w), y: Phaser.Math.Between(0,h),
+        len: Phaser.Math.Between(14,26), speed: Phaser.Math.Between(560,900)
+      });
+    }
+    this.rainGfx = this.add.graphics();
+
+    this.playerX = w*0.22;
+    this.playerContainer = this.add.container(this.playerX, this.courierY);
+    this.buildCourier();
+    // keep the courier drawn in front of obstacles/the parcel machine regardless of add order
+    this.playerContainer.setDepth(5);
+
+    this.obstacles = [];
+    this.spawnTimer = 0;
+    this.spawnInterval = 1000;
+    this.lastObstacleKey = null;
+
+    this.finish = null;
+    this.finishTriggered = false;
+    this.arriving = false;
+
+    // The HUD lives in the DOM (see #hud) rather than being drawn here, so it stays sharp when
+    // the canvas is scaled up; this scene only feeds it values — see updateHud().
+    this.heartEls = [...document.querySelectorAll('#hud .heart')];
+    this.updateHud();
+    applyOrientationGate(); // covers a run started while the phone is already sideways
+
+    this.input.keyboard.on('keydown-SPACE', ()=>this.tryJump());
+    this.input.keyboard.on('keydown-UP', ()=>this.tryJump());
+    this.input.keyboard.on('keydown-DOWN', ()=>this.startDuck());
+    this.input.keyboard.on('keyup-DOWN', ()=>this.endDuck());
+
+    this.input.on('pointerdown', (p)=>{
+      if(p.y > this.scale.height*0.55) this.startDuck();
+      else this.tryJump();
+    });
+    this.input.on('pointerup', ()=>this.endDuck());
+  }
+
+
+  buildCourier(){
+    Object.entries(COURIER_ANIMS).forEach(([key, a])=>{
+      if(!this.anims.exists(key)){
+        // durationMs lets a one-shot cycle state how long it should take overall and have the
+        // rate follow its own frame count; the looping cycles just use the shared 42ms a frame.
+        const frameCount = a.end - a.start + 1;
+        this.anims.create({
+          key,
+          frames: this.anims.generateFrameNames(a.atlasKey, {
+            prefix: a.prefix, start: a.start, end: a.end, zeroPad: 3, suffix: a.suffix
+          }),
+          frameRate: a.durationMs ? frameCount/(a.durationMs/1000) : 1000/42,
+          repeat: a.loop ? -1 : 0
+        });
+      }
+    });
+
+    this.shadowGfx = this.add.graphics();
+    this.playerContainer.add(this.shadowGfx);
+
+    // both atlases share the same 256px frame height, so this is the shared baseline scale;
+    // per-animation heightRatio then tunes each pose relative to it (see COURIER_ANIMS)
+    const runnerH = 133 * PORTRAIT_COURIER_SCALE; // 116 * 1.15, plus the portrait size bump
+    const runDef = COURIER_ANIMS.run;
+    const firstFrameName = `${runDef.prefix}${String(runDef.start).padStart(3,'0')}${runDef.suffix}`;
+    const frame = this.textures.get(runDef.atlasKey).get(firstFrameName);
+    this.playerBaseScale = runnerH / frame.height;
+
+    this.playerSprite = this.add.sprite(0, 0, runDef.atlasKey, firstFrameName);
+    this.playerContainer.add(this.playerSprite);
+    this._currentAnimKey = null;
+    this.setCourierAnim('run');
+
+    this.redrawCourier();
+  }
+
+  setCourierAnim(key){
+    if(this._currentAnimKey === key) return;
+    const def = COURIER_ANIMS[key];
+    this.playerSprite.setOrigin(def.originX, def.originY || COURIER_ANIM_ORIGIN_Y);
+    this.playerSprite.setScale(this.playerBaseScale * def.heightRatio);
+    this.playerSprite.play(key);
+    // The walk is the one cycle tied to real ground movement, so its playback has to track
+    // ARRIVAL_SPEED or the feet slide; the run and duck cycles are decoupled and play at 1x.
+    this.playerSprite.anims.timeScale = (key === 'walk') ? ARRIVAL_SPEED / WALK_CYCLE_TUNED_SPEED : 1;
+    this._currentAnimKey = key;
+  }
+
+  redrawCourier(){
+    const ducking = gameState.isDucking && !gameState.isJumping;
+
+    const shadowScale = gameState.isJumping ? Phaser.Math.Clamp(1 - Math.abs(gameState.vy)/900, 0.35, 1) : 1;
+    this.shadowGfx.clear();
+    this.shadowGfx.fillStyle(0x000000, 0.35*shadowScale);
+    this.shadowGfx.fillEllipse(0, this.courierY - this.playerContainer.y, 40*shadowScale, 10*shadowScale);
+
+    // jumping always freezes on the run cycle — ducking is already forced off mid-air.
+    // finishTriggered means he's reached the machine and is lifting the box in; that takes
+    // priority over the walk this would otherwise keep re-selecting for the rest of the arrival.
+    this.setCourierAnim(this.finishTriggered ? 'raise' : (this.arriving ? 'walk' : (ducking ? 'duck' : 'run')));
+    if(gameState.isJumping){
+      if(!this.playerSprite.anims.isPaused) this.playerSprite.anims.pause();
+    } else if(this.playerSprite.anims.isPaused){
+      this.playerSprite.anims.resume();
+    }
+  }
+
+  tryJump(){
+    if(!gameState.running || this.arriving) return;
+    if(gameState.isJumping) return;
+    if(gameState.isDucking) this.endDuck();
+    gameState.isJumping = true;
+    gameState.vy = JUMP_VELOCITY;
+  }
+  startDuck(){
+    if(!gameState.running || this.arriving) return;
+    if(gameState.isJumping) return;
+    gameState.isDucking = true;
+  }
+  endDuck(){ gameState.isDucking = false; }
+
+  pickKeyFrom(defs, excludeKey){
+    if(defs.length <= 1) return defs[0].key;
+    let def;
+    do {
+      def = Phaser.Utils.Array.GetRandom(defs);
+    } while (def.key === excludeKey);
+    return def.key;
+  }
+
+  createBgPanelSet(defs, y, dispH, panelCount, getLastKey, setLastKey){
+    const panels = [];
+    let px = 0;
+    for(let i=0;i<panelCount;i++){
+      const key = this.pickKeyFrom(defs, getLastKey());
+      setLastKey(key);
+      const img = this.add.image(px, y, key).setOrigin(0,0).setDisplaySize(this.bgPanelW, dispH).setDepth(-10);
+      panels.push({ img, x: px, key });
+      px += this.bgPanelW;
+    }
+    return panels;
+  }
+
+  updateBgPanelSet(panels, dx, defs, getLastKey, setLastKey){
+    panels.forEach(p=>{ p.x -= dx; });
+    panels.forEach(p=>{
+      if(p.x + this.bgPanelW <= 0){
+        const rightmost = panels.reduce((a,b)=> b.x > a.x ? b : a);
+        p.x = rightmost.x + this.bgPanelW;
+        p.key = this.pickKeyFrom(defs, rightmost.key);
+        setLastKey(p.key);
+        p.img.setTexture(p.key);
+      }
+      p.img.x = p.x;
+    });
+  }
+
+  spawnObstacle(){
+    const w=this.scale.width;
+    let def;
+    if(this.lastObstacleKey === 'obs_roadworks'){
+      // the road-works sign always leads into a manhole right after it
+      def = OBSTACLE_DEFS.ground.find(d => d.key === 'obs_manhole');
+    } else {
+      const pool = Math.random() < 0.55 ? OBSTACLE_DEFS.ground : OBSTACLE_DEFS.air;
+      do {
+        def = Phaser.Utils.Array.GetRandom(pool);
+      } while (pool.length > 1 && def.key === this.lastObstacleKey);
+    }
+    this.lastObstacleKey = def.key;
+    const groundType = OBSTACLE_DEFS.ground.includes(def);
+    const type = groundType ? 'ground' : 'air';
+
+    const tex = this.textures.get(def.key).getSourceImage();
+    const targetH = def.targetH * (def.fixedSize ? 1 : PORTRAIT_OBJECT_SCALE);
+    const scale = targetH / tex.height;
+    const dispW = tex.width*scale, dispH = targetH;
+    const x = w + dispW/2 + 20;
+    // ground obstacles sit on the purple band's top edge; overhead obstacle posts land
+    // on the grey curb above it, so they read as posts planted on the curb
+    const y = groundType ? this.groundY : this.postY;
+
+    const img = this.add.image(x, y, def.key).setOrigin(0.5, 1).setDisplaySize(dispW, dispH);
+    this.obstacles.push({ img, x, type, hit:false, width: dispW });
+  }
+
+  updateObstacleVisual(o){
+    // no sway: these are full ground-mounted post+sign images now, not a sign hanging from a
+    // wire, so swaying the whole sprite made the rigid post look like it was sliding around
+    o.img.x = o.x;
+  }
+
+  // Called once, the instant the run distance is covered: the endless-runner part of the
+  // level is over. The world stops scrolling (the "camera" stops), the parcel machine slides
+  // in from off-screen just like an obstacle would and settles near the right edge, then the
+  // courier switches to the walk cycle and crosses the frozen scene on its own to reach it —
+  // making it read as a scripted arrival, not more of the same dodging.
+  startArrival(w){
+    this.arriving = true;
+    gameState.isJumping = false;
+    gameState.isDucking = false;
+    gameState.vy = 0;
+    this.playerContainer.y = this.courierY;
+
+    const tex = this.textures.get(FINISH_DEF.key).getSourceImage();
+    const finishTargetH = FINISH_DEF.targetH * PORTRAIT_OBJECT_SCALE;
+    const scale = finishTargetH / tex.height;
+    const dispW = tex.width*scale, dispH = finishTargetH;
+    const startX = w + dispW/2 + 20;       // enters from off-screen, same as any obstacle
+    const restX = w * FINISH_REST_X_RATIO; // fixed resting spot, measured from the left edge
+    // A sprite rather than a plain image so it can switch to the opening animation later
+    // (startParcelOpening()) without needing to swap game objects mid-scene. It stands on the
+    // courier's own ground line rather than the lower one the ground obstacles use, so the two
+    // read as sharing a floor once the courier walks up to it.
+    const img = this.add.sprite(startX, this.courierY, FINISH_DEF.key).setOrigin(0.5,1).setDisplaySize(dispW,dispH);
+    this.finish = { img, x: startX, restX, width: dispW, targetH: finishTargetH, settled: false };
+  }
+
+  updateFinish(dt){
+    if(!this.arriving || !this.finish || this.finishTriggered) return;
+
+    if(!this.finish.settled){
+      this.finish.x -= ARRIVAL_SPEED*dt;
+      if(this.finish.x <= this.finish.restX){
+        this.finish.x = this.finish.restX;
+        this.finish.settled = true;
+        startConfetti(); // the machine is in place and the courier sets off — celebrate from here
+      }
+      this.finish.img.x = this.finish.x;
+      return; // the courier waits for the machine to settle before it starts walking
+    }
+
+    const stopX = this.finish.x - this.finish.width*0.5 + ARRIVAL_STOP_OVERLAP*PORTRAIT_OBJECT_SCALE;
+    const remaining = stopX - this.playerContainer.x;
+    if(remaining <= 0){
+      this.finishTriggered = true;
+      this.startParcelOpening();
+      return;
+    }
+    // Slow into the mark over the final stretch, scaling the walk cycle by the same factor so the
+    // footfalls stay matched to the ground right down to standing still.
+    const ease = Phaser.Math.Clamp(remaining/ARRIVAL_EASE_DISTANCE, ARRIVAL_EASE_MIN, 1);
+    this.playerContainer.x += ARRIVAL_SPEED*ease*dt;
+    this.playerSprite.anims.timeScale = (ARRIVAL_SPEED/WALK_CYCLE_TUNED_SPEED)*ease;
+  }
+
+  // Fires once, the instant the courier reaches the machine: he switches from the walk cycle to
+  // lifting the box in, then after a beat the static machine image swaps for its opening
+  // animation (played once), and the win screen follows once that has had time to play out.
+  // The confetti is already falling by this point — it starts when he sets off (updateFinish).
+  startParcelOpening(){
+    this.setCourierAnim('raise');
+
+    this.time.delayedCall(PARCEL_OPEN_DELAY, ()=>{
+      // play() first so the sprite's current frame becomes the animation's frame before
+      // setDisplaySize measures against it — the opening animation's source canvas isn't the
+      // same aspect ratio as the static parcel-machine.png, so sizing against the wrong frame
+      // would pop to the wrong size the instant it starts playing.
+      this.finish.img.play('parcel_open');
+      this.finish.img.setOrigin(PARCEL_OPEN_DEF.originX, PARCEL_OPEN_DEF.originY);
+      const openFirstFrame = `${PARCEL_OPEN_DEF.prefix}000${PARCEL_OPEN_DEF.suffix}`;
+      const openFrame = this.textures.getFrame(PARCEL_OPEN_DEF.atlasKey, openFirstFrame);
+      const openScale = this.finish.targetH / openFrame.height;
+      this.finish.img.setDisplaySize(openFrame.width*openScale, this.finish.targetH);
+
+      this.time.delayedCall(WIN_SCREEN_DELAY, ()=>{
+        this.endGame(true);
+      });
+    });
+  }
+
+  update(time, delta){
+    if(!gameState.running) return;
+    // Real elapsed time, but never more than MAX_FRAME_MS per step: a long stall would otherwise
+    // arrive as one giant step that carries an obstacle clean past the courier between two
+    // collision checks. Below ~20fps the game slows down rather than skipping.
+    const frameMs = Math.min(delta, MAX_FRAME_MS);
+    const dt = frameMs/1000;
+    const w=this.scale.width, h=this.scale.height;
+    this._nowMs = time;
+
+    if(!this.arriving){
+      // speed stays constant at the base value for the whole run — it used to ramp up to a
+      // cap of 560, but that ramp took ~2444m to finish regardless of level length, so a level
+      // this long would spend most of its distance still visibly accelerating
+      gameState.distance += gameState.speed*dt*0.5;
+    }
+
+    // "the camera stops" once the parcel machine has settled into place — up to that point
+    // the background keeps scrolling (at the calmer arrival pace once arriving begins), so the
+    // machine sliding in reads as the camera still moving, not an object drifting over a static
+    // scene. After it settles, we simply stop touching these and the last frame drawn stays put.
+    const cameraMoving = !this.arriving || (this.finish && !this.finish.settled);
+    const scrollSpeed = this.arriving ? ARRIVAL_SPEED : gameState.speed;
+    if(cameraMoving){
+      const groundDx = scrollSpeed*dt;
+      const skyDx = groundDx * BG_PARALLAX_FACTOR; // distant layer scrolls slower — the parallax
+      this.updateBgPanelSet(this.bgTopPanels, skyDx, TOP_BACKGROUND_DEFS, ()=>lastTopBgKey, k=>lastTopBgKey=k);
+      this.updateBgPanelSet(this.bgBottomPanels, groundDx, BOTTOM_BACKGROUND_DEFS, ()=>lastBottomBgKey, k=>lastBottomBgKey=k);
+    }
+
+    this.rainGfx.clear();
+    this.rainGfx.lineStyle(2, 0xcfe0f5, 0.35);
+    this.rain.forEach(r=>{
+      r.x -= 90*dt;
+      r.y += r.speed*dt;
+      if(r.y > h){ r.y = -20; r.x = Phaser.Math.Between(0,w); }
+      this.rainGfx.lineBetween(r.x, r.y, r.x-8, r.y+r.len);
+    });
+
+    if(gameState.isJumping){
+      gameState.vy += GRAVITY*dt;
+      this.playerContainer.y += gameState.vy*dt;
+      if(this.playerContainer.y >= this.courierY){
+        this.playerContainer.y = this.courierY;
+        gameState.isJumping = false;
+        gameState.vy = 0;
+      }
+    }
+    this.redrawCourier();
+
+    if(!this.arriving){
+      this.spawnTimer += frameMs;
+      // constant spacing throughout — this used to shrink toward a 480ms floor as distance grew,
+      // which bunched obstacles closer together later in a long run than at the start
+      const interval = this.spawnInterval * 2;
+      if(this.spawnTimer > interval && gameState.distance < LAST_OBSTACLE_DISTANCE){
+        this.spawnTimer = 0;
+        this.spawnObstacle();
+      }
+    }
+
+    // Obstacles sit on the ground, so they scroll whenever the camera does — including through
+    // the machine's slide-in. That lets a straggler keep drifting away rather than freezing
+    // mid-road the instant the level ends, which is what let the spawn cutoff move later.
+    // Collisions stop as soon as the arrival begins: the courier is on rails from there.
+    if(cameraMoving){
+      for(let i=this.obstacles.length-1;i>=0;i--){
+        const o = this.obstacles[i];
+        o.x -= scrollSpeed*dt;
+        this.updateObstacleVisual(o);
+
+        // Checked every frame while inside the zone (not just once on first contact) — a
+        // one-shot check let the player clear an obstacle at the moment they first entered its
+        // zone, then keep descending/standing-up into it for the rest of the overlap without
+        // ever failing, which looked like "jumping into" it for free. o.hit now only locks once
+        // an actual hit lands, so a late mistake during the overlap still gets caught.
+        if(!this.arriving){
+          const dx = Math.abs(o.x - this.playerX);
+          if(!o.hit && dx < o.width*0.5){
+            let collided = false;
+            if(o.type==='ground'){
+              const clearance = this.groundY - this.playerContainer.y;
+              if(clearance < 46) collided = true;
+            } else {
+              const ducking = gameState.isDucking && !gameState.isJumping;
+              if(!ducking) collided = true;
+            }
+            if(collided){
+              o.hit = true;
+              this.applyDamage();
+            }
+          }
+        }
+
+        if(o.x < -60){
+          o.img.destroy();
+          this.obstacles.splice(i,1);
+        }
+      }
+    }
+
+    if(!this.arriving && gameState.distance >= LEVEL_DISTANCE){
+      this.startArrival(w);
+    }
+    this.updateFinish(dt);
+
+    this.updateHud();
+  }
+
+  // Hearts empty from the right, so the leftmost ones are the last to go.
+  updateHud(){
+    this.heartEls.forEach((el, i)=>{
+      el.src = i < gameState.hearts ? HEART_FULL_SRC : HEART_EMPTY_SRC;
+    });
+  }
+
+  applyDamage(){
+    this.cameras.main.flash(120,224,122,122,false);
+    this.cameras.main.shake(140,0.006);
+    this.tweens.add({ targets:this.playerContainer, scaleX:0.88, scaleY:1.1, duration:80, yoyo:true });
+    if(gameState.hearts > 0){
+      gameState.hearts--;
+      this.updateHud();
+      return;
+    }
+    // no hearts left to lose — this is the hit that ends the run
+    this.endGame(false);
+  }
+
+  endGame(won){
+    if(!gameState.running) return;
+    gameState.running = false;
+    if(won){
+      // No extra beat here: the win screen's timing is already orchestrated by the arrival
+      // (PARCEL_OPEN_DELAY then WIN_SCREEN_DELAY), and it fades up rather than cutting in.
+      showWinOverlay();
+      return;
+    }
+    this.time.delayedCall(250, ()=>{
+      document.getElementById('gameover-overlay').classList.remove('hidden');
+    });
+  }
+}
+
+// Matches the CSS breakpoint above (pointer:coarse + portrait): a touch phone held upright gets
+// a taller 720x900 logical canvas instead of 16:9 (720x405). Width is identical either way, so
+// obstacle spawn margin, speed, and spacing are all untouched; only the vertical framing changes.
+const config = {
+  type: Phaser.AUTO,
+  parent: 'phaser-container',
+  width: 720,
+  height: IS_PORTRAIT_LAYOUT ? 900 : 405,
+  backgroundColor: '#150c26',
+  scale:{ mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  // Phaser's delta smoothing caps every frame at 1/60s while it believes the window is unfocused.
+  // iOS Safari fires 'blur' (Control Center, notification shade, starting a screen recording) but
+  // doesn't reliably fire 'focus' on return, so the cap can stick for the whole session — and on
+  // a phone running below 60fps the game then plays in slow motion. update() clamps the step
+  // itself instead (MAX_FRAME_MS).
+  fps:{ smoothStep: false },
+  scene: [RunnerScene]
+};
+
+let game = null;
+
+// --- TEST ONLY: frame-rate readout for checking the slow-motion fix on a phone. ---
+// "focus: no" is the state that used to trigger Phaser's 1/60s cap; with smoothStep off the game
+// should now hold normal speed at any fps shown here, down to the 20fps floor.
+(function(){
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed; top:6px; right:8px; z-index:200; pointer-events:none;' +
+    'font:600 11px/1.3 monospace; color:#e7f43b; background:rgba(0,0,0,0.55); padding:3px 6px; border-radius:4px;';
+  document.body.appendChild(el);
+  setInterval(function(){
+    if(!game || !game.loop){ el.textContent = 'fps: –'; return; }
+    el.textContent = 'fps: ' + Math.round(game.loop.actualFps) +
+      '  delta: ' + Math.round(game.loop.rawDelta) + 'ms  focus: ' + (game.loop.inFocus ? 'yes' : 'no');
+  }, 500);
+})();
+
+// Holding a control down — the duck button, or tap-and-hold on the canvas — is a press the
+// browser would otherwise answer with a context menu (long-press on touch and touch emulation,
+// right-click on desktop), which cancels the hold mid-duck. The game has no use for a context
+// menu over the play area, so suppress it on the card and on the button row below it.
+['game-wrap','mobile-controls'].forEach(function(id){
+  const el = document.getElementById(id);
+  if(el) el.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+});
+
+// --- Portrait-only on touch ---
+// #rotate-overlay is raised by CSS alone; this stops the clock behind it, so a player who turns
+// the phone mid-run doesn't come back to a crash they never saw coming. Pausing the scene freezes
+// its delayed calls too, so a half-finished arrival sequence holds its place as well.
+const landscapeQuery = window.matchMedia('(orientation: landscape)');
+function applyOrientationGate(){
+  if(!IS_PORTRAIT_LAYOUT) return; // desktop is free to be any shape
+  const scene = game ? game.scene.getScene('runner') : null;
+  if(!scene) return;
+  if(landscapeQuery.matches) scene.scene.pause();
+  else scene.scene.resume();
+}
+landscapeQuery.addEventListener('change', applyOrientationGate);
+
+// On-screen jump/duck buttons (shown below the canvas on touch devices — see CSS)
+// drive the same scene methods the keyboard/tap-canvas controls already use. Wired with
+// pointerdown/up (not click) so duck can be held down like the canvas tap-and-hold gesture.
+function getRunnerScene(){
+  return game ? game.scene.getScene('runner') : null;
+}
+const jumpBtn = document.getElementById('jump-btn');
+const duckBtn = document.getElementById('duck-btn');
+if(jumpBtn){
+  jumpBtn.addEventListener('pointerdown', (e)=>{
+    e.preventDefault();
+    const scene = getRunnerScene();
+    if(scene) scene.tryJump();
+  });
+}
+if(duckBtn){
+  duckBtn.addEventListener('pointerdown', (e)=>{
+    e.preventDefault();
+    const scene = getRunnerScene();
+    if(scene) scene.startDuck();
+  });
+  ['pointerup','pointerleave','pointercancel'].forEach(evt=>{
+    duckBtn.addEventListener(evt, ()=>{
+      const scene = getRunnerScene();
+      if(scene) scene.endDuck();
+    });
+  });
+}
+
+// --- Confetti ---
+// Pieces are plain elements on a layer above the win overlay, each falling on its own infinite
+// CSS animation, so the celebration carries on over the success screen instead of being hidden
+// behind it. Every piece begins above the top edge (the keyframe starts at -40px, outside the
+// clipped layer) with a staggered start, so the confetti falls into view rather than appearing
+// already scattered across the whole screen.
+const CONFETTI_COLORS = ['#9339f2', '#e7f43b', '#ffffff', '#643395', '#c79cf5'];
+const CONFETTI_PIECES = 70;
+// How long the confetti keeps falling before it winds down. Pieces already in the air finish
+// their drop, so the rain thins out naturally over the following few seconds instead of
+// vanishing all at once.
+const CONFETTI_DURATION_MS = 7000;
+let confettiStopTimer = null;
+function startConfetti(){
+  const layer = document.getElementById('confetti');
+  if(layer.classList.contains('active')) return;
+  // Reveal the layer before measuring: it is display:none until then, which would report a
+  // height of 0 and leave every piece looping over a tiny stretch at the top of the card.
+  layer.classList.add('active');
+  const fall = layer.clientHeight + 80;
+  const frag = document.createDocumentFragment();
+  for(let i=0;i<CONFETTI_PIECES;i++){
+    const p = document.createElement('div');
+    p.className = 'confetti-piece';
+    const w = 4 + Math.random()*5;
+    p.style.left = (Math.random()*98)+'%'; // not a full 100 — a piece at the edge is clipped away
+    p.style.width = w+'px';
+    p.style.height = (w*1.6)+'px';
+    p.style.background = CONFETTI_COLORS[(Math.random()*CONFETTI_COLORS.length)|0];
+    p.style.setProperty('--fall', fall+'px');
+    p.style.setProperty('--drift', (Math.random()*80-40)+'px');
+    p.style.setProperty('--spin', (360+Math.random()*720)+'deg');
+    p.style.animationDuration = (2.2+Math.random()*2)+'s';
+    p.style.animationDelay = (Math.random()*2)+'s'; // staggered, but never mid-fall on frame one
+    frag.appendChild(p);
+  }
+  layer.appendChild(frag);
+  clearTimeout(confettiStopTimer);
+  confettiStopTimer = setTimeout(retireConfetti, CONFETTI_DURATION_MS);
+}
+// Each piece bows out the next time its loop wraps back to the top, which happens off-screen —
+// so the rain tails off over one fall's worth of time rather than popping out mid-air.
+function retireConfetti(){
+  const layer = document.getElementById('confetti');
+  [...layer.children].forEach(p=>{
+    p.addEventListener('animationiteration', ()=>p.remove(), { once:true });
+  });
+}
+function stopConfetti(){
+  clearTimeout(confettiStopTimer);
+  confettiStopTimer = null;
+  const layer = document.getElementById('confetti');
+  layer.classList.remove('active');
+  layer.replaceChildren();
+}
+
+// Fades the success screen up over the still-running scene rather than cutting to it.
+function showWinOverlay(){
+  const ov = document.getElementById('win-overlay');
+  ov.style.transition = 'none';
+  ov.style.opacity = '0';
+  ov.classList.remove('hidden');
+  void ov.offsetWidth; // commit the starting opacity before transitioning away from it
+  ov.style.transition = 'opacity '+WIN_FADE_MS+'ms ease';
+  ov.style.opacity = '1';
+}
+function resetWinOverlay(){
+  const ov = document.getElementById('win-overlay');
+  ov.classList.add('hidden');
+  ov.style.transition = 'none';
+  ov.style.opacity = '1';
+}
+
+// --- Loading progress (asset loads can take a while on slow connections) ---
+function showLoadingOverlay(){
+  document.getElementById('start-overlay').classList.add('hidden');
+  document.getElementById('gameover-overlay').classList.add('hidden');
+  stopConfetti();
+  resetWinOverlay();
+  setLoadingProgress(0);
+  document.getElementById('loading-overlay').classList.remove('hidden');
+  // the jump/duck row stays hidden on the start screen and fades in while the assets load
+  document.getElementById('mobile-controls').classList.add('shown');
+}
+function setLoadingProgress(frac){
+  const pct = Math.round(frac*100);
+  document.getElementById('loading-fill').style.width = pct+'%';
+  document.getElementById('loading-pct').textContent = pct+'%';
+}
+function hideLoadingOverlay(){
+  document.getElementById('loading-overlay').classList.add('hidden');
+}
+
+function startGame(){
+  if(typeof Phaser === 'undefined'){
+    alert('The game engine could not load — check your internet connection and reload the page. If this keeps happening, try opening the page directly in Safari rather than a preview/share view.');
+    return;
+  }
+  showLoadingOverlay();
+  if(game){ game.destroy(true); }
+  game = new Phaser.Game(config);
+}
+
+function goHome(){
+  document.getElementById('gameover-overlay').classList.add('hidden');
+  stopConfetti();
+  resetWinOverlay();
+  document.getElementById('loading-overlay').classList.add('hidden');
+  document.getElementById('start-overlay').classList.remove('hidden');
+  document.getElementById('mobile-controls').classList.remove('shown');
+  if(game){ game.destroy(true); game = null; }
+}
+
+// Touch-safe binding: iOS Safari can occasionally swallow a bare 'click'
+// after a touch, so we handle touchend directly (and guard against the
+// click that follows it firing a second time).
+function bindTap(el, handler){
+  if(!el) return;
+  let recentTouch = false;
+  el.addEventListener('touchend', function(e){
+    recentTouch = true;
+    e.preventDefault();
+    handler(e);
+    setTimeout(function(){ recentTouch = false; }, 400);
+  }, { passive:false });
+  el.addEventListener('click', function(e){
+    if(recentTouch) return;
+    handler(e);
+  });
+}
+
+bindTap(document.getElementById('start-btn'), startGame);
+bindTap(document.getElementById('retry-btn'), startGame);
+bindTap(document.getElementById('home-btn-go'), goHome);
+
+document.getElementById('discount-code').textContent = DISCOUNT_CODE;
+
+// Tapping the code box copies the code. The async Clipboard API only exists in a secure context
+// (https, or localhost), so plain-http hosting falls back to the old textarea + execCommand trick.
+const promoCodeBox = document.querySelector('.promo-code');
+const PROMO_COPIED_MS = 1800;
+let promoCopiedTimer = null;
+
+function copyTextFallback(text){
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed; top:0; left:-9999px; opacity:0;';
+  document.body.appendChild(ta);
+  ta.select();
+  ta.setSelectionRange(0, text.length); // iOS needs the explicit range; select() alone is ignored
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch(err) { ok = false; }
+  ta.remove();
+  return ok;
+}
+
+// Only ever called once a copy has actually succeeded, so the player is never told the code is
+// on their clipboard when it isn't.
+function flagPromoCopied(){
+  if(!promoCodeBox) return;
+  promoCodeBox.classList.add('copied');
+  clearTimeout(promoCopiedTimer);
+  promoCopiedTimer = setTimeout(function(){
+    promoCodeBox.classList.remove('copied');
+  }, PROMO_COPIED_MS);
+}
+
+bindTap(promoCodeBox, function(){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(DISCOUNT_CODE).then(flagPromoCopied, function(){
+      if(copyTextFallback(DISCOUNT_CODE)) flagPromoCopied();
+    });
+  } else if(copyTextFallback(DISCOUNT_CODE)){
+    flagPromoCopied();
+  }
+});
+
+// Store badges and the desktop Download button point at the URLs set at the top of this script;
+// an unset one stays hrefless so it renders as plain content rather than a link going nowhere.
+[['app-store-link', APP_STORE_URL], ['google-play-link', GOOGLE_PLAY_URL],
+ ['download-btn', DOWNLOAD_URL]].forEach(function(pair){
+  const el = document.getElementById(pair[0]);
+  if(el && pair[1]) el.href = pair[1];
+});
+
+// Show only the store the device can actually install from. Anything that isn't clearly one or
+// the other (desktop, or a browser we can't place) keeps both badges.
+function detectMobileOS(){
+  const ua = navigator.userAgent || '';
+  // iPadOS 13+ reports itself as a Mac, so a "Mac" claiming touch points is really an iPad.
+  // Desktop Macs report maxTouchPoints 0 — a trackpad doesn't count as a touch point.
+  if(/iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return 'ios';
+  if(/Android/i.test(ua)) return 'android';
+  return 'other';
+}
+const mobileOS = detectMobileOS();
+if(mobileOS === 'ios'){
+  document.getElementById('google-play-link').hidden = true;
+} else if(mobileOS === 'android'){
+  document.getElementById('app-store-link').hidden = true;
+}
+document.querySelector('.app-promo-text').textContent = APP_PROMO_TEXT[mobileOS];
+</script>
+</body>
+</html>
