@@ -590,7 +590,10 @@ const FINISH_REST_X_RATIO = 0.66;
 // parcel-machine.png is centred in its own canvas, so anchoring this one at a plain 0.5 would
 // make the machine jump sideways the instant the texture swaps.
 const PARCEL_OPEN_DEF = {
-  atlasKey:'parcel_open', png:'assets/animations/parcel_machine_opening.png', json:'assets/animations/parcel_machine_opening.json',
+  // Half-resolution copy of the Makko export: the original sheet is 4680x5140, past the 4096px
+  // texture limit of many Android GPUs, which draw an oversized texture as solid black. Halved
+  // (2340x2570) it fits everywhere and still has ~2x more resolution than the machine is drawn at.
+  atlasKey:'parcel_open', png:'assets/animations/parcel_machine_opening_half.png', json:'assets/animations/parcel_machine_opening_half.json',
   prefix:'courier_challenge_runner_parcel_machine_opening_2_', suffix:'.png', start:0, end:29,
   originX: 434/776, originY: 1022/1024
 };
