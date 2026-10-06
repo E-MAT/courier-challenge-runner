@@ -407,7 +407,7 @@ if(window.matchMedia('(pointer: coarse)').matches){
         <a id="google-play-link" target="_blank" rel="noopener noreferrer"><img src="assets/images/logos/google-play.svg" alt="Get it on Google Play"></a>
       </div>
       <a class="btn" id="download-btn" target="_blank" rel="noopener noreferrer">DOWNLOAD</a>
-      <img id="app-qr" src="assets/images/app-qr-code.png" alt="QR code to download the Venipak app">
+      <img id="app-qr" src="assets/images/qr/lt.png" alt="QR code to download the Venipak app">
     </div>
   </div>
   <div id="confetti"></div>
@@ -452,6 +452,9 @@ const APP_PROMO_TEXT = {
 };
 
 const LEVEL_DISTANCE = 3000;
+// Longest step one frame may advance the game by (50ms = a 20fps floor). At the run speed of
+// 340px/s that's 17px per frame — well under any obstacle's width, so none can be skipped.
+const MAX_FRAME_MS = 50;
 // Pace of the whole arrival: the machine's slide-in, the world scroll behind it, and the
 // courier's walk all run at this speed. The walk cycle's frame rate was authored against
 // WALK_CYCLE_TUNED_SPEED, so setCourierAnim() scales the animation by the ratio between the two —
@@ -543,7 +546,10 @@ const FINISH_REST_X_RATIO = 0.66;
 // parcel-machine.png is centred in its own canvas, so anchoring this one at a plain 0.5 would
 // make the machine jump sideways the instant the texture swaps.
 const PARCEL_OPEN_DEF = {
-  atlasKey:'parcel_open', png:'assets/animations/parcel_machine_opening.png', json:'assets/animations/parcel_machine_opening.json',
+  // Half-resolution copy of the Makko export: the original sheet is 4680x5140, past the 4096px
+  // texture limit of many Android GPUs, which draw an oversized texture as solid black. Halved
+  // (2340x2570) it fits everywhere and still has ~2x more resolution than the machine is drawn at.
+  atlasKey:'parcel_open', png:'assets/animations/parcel_machine_opening_half.png', json:'assets/animations/parcel_machine_opening_half.json',
   prefix:'courier_challenge_runner_parcel_machine_opening_2_', suffix:'.png', start:0, end:29,
   originX: 434/776, originY: 1022/1024
 };
@@ -940,7 +946,11 @@ class RunnerScene extends Phaser.Scene {
 
   update(time, delta){
     if(!gameState.running) return;
-    const dt = delta/1000;
+    // Real elapsed time, but never more than MAX_FRAME_MS per step: a long stall would otherwise
+    // arrive as one giant step that carries an obstacle clean past the courier between two
+    // collision checks. Below ~20fps the game slows down rather than skipping.
+    const frameMs = Math.min(delta, MAX_FRAME_MS);
+    const dt = frameMs/1000;
     const w=this.scale.width, h=this.scale.height;
     this._nowMs = time;
 
@@ -985,7 +995,7 @@ class RunnerScene extends Phaser.Scene {
     this.redrawCourier();
 
     if(!this.arriving){
-      this.spawnTimer += delta;
+      this.spawnTimer += frameMs;
       // constant spacing throughout — this used to shrink toward a 480ms floor as distance grew,
       // which bunched obstacles closer together later in a long run than at the start
       const interval = this.spawnInterval * 2;
@@ -1088,6 +1098,12 @@ const config = {
   height: IS_PORTRAIT_LAYOUT ? 900 : 405,
   backgroundColor: '#150c26',
   scale:{ mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  // Phaser's delta smoothing caps every frame at 1/60s while it believes the window is unfocused.
+  // iOS Safari fires 'blur' (Control Center, notification shade, starting a screen recording) but
+  // doesn't reliably fire 'focus' on return, so the cap can stick for the whole session — and on
+  // a phone running below 60fps the game then plays in slow motion. update() clamps the step
+  // itself instead (MAX_FRAME_MS).
+  fps:{ smoothStep: false },
   scene: [RunnerScene]
 };
 
